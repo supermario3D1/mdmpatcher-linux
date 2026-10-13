@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+assets/deobfuscated/
+output_backup/
+src/c/mdm_patch
+src/c/*.o
+.pytest_cache/

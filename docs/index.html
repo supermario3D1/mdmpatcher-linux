@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MDMPatcher-Linux v2.7.0 — Official Linux iOS 9 – 27+ MDM &amp; Setup Patcher</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <style>
+    :root {
+      --bg: #070b14;
+      --bg-card: #0f172a;
+      --bg-elevated: #111c33;
+      --border: #1e293b;
+      --border-accent: #06b6d4;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --cyan: #38bdf8;
+      --emerald: #10b981;
+      --blue: #3b82f6;
+      --amber: #f59e0b;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 50% 0%, #0d1f3a 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Navbar */
+    header.nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+      background: rgba(7, 11, 20, 0.85);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 1.15rem;
+      color: var(--text);
+    }
+    .brand img { width: 36px; height: 36px; }
+    .nav-links {
+      display: flex;
+      gap: 22px;
+      font-size: 0.94rem;
+      font-weight: 600;
+    }
+    .nav-links a { color: var(--text-muted); }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 36px 0 42px;
+    }
+    .hero-banner {
+      max-width: 100%;
+      border-radius: 18px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+      margin-bottom: 28px;
+    }
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.96rem;
+      border: 1px solid var(--border);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+      cursor: pointer;
+    }
+    .btn:hover { transform: translateY(-1px); text-decoration: none; }
+    .btn-primary {
+      background: linear-gradient(135deg, #06b6d4, #2563eb);
+      color: #fff;
+      border-color: transparent;
+    }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border-color: #334155;
+    }
+
+    /* Section Headings */
+    section { margin-top: 56px; }
+    .section-tag {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--emerald);
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    h2 {
+      font-size: 1.9rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    p.lead {
+      color: var(--text-muted);
+      max-width: 820px;
+      margin-bottom: 24px;
+    }
+
+    /* Cards Grid */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+    }
+    .card h3 {
+      font-size: 1.15rem;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card p { color: var(--text-muted); font-size: 0.94rem; }
+
+    /* Distro Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .tab-btn {
+      background: var(--bg-card);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: #162647;
+      color: #fff;
+      border-color: var(--blue);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    pre {
+      background: #050811;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 18px 20px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      color: #e2e8f0;
+      margin: 12px 0;
+    }
+    code {
+      font-family: var(--mono);
+      background: rgba(30, 41, 59, 0.7);
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 0.88em;
+    }
+    pre code { background: transparent; padding: 0; }
+
+    /* Compatibility Table */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg-card);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.93rem;
+    }
+    th, td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #0b1324;
+      color: #cbd5e1;
+      font-weight: 700;
+    }
+    tr:last-child td { border-bottom: none; }
+    .pill-ok {
+      display: inline-block;
+      background: rgba(16, 185, 129, 0.16);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .callout {
+      border-left: 4px solid var(--amber);
+      background: rgba(245, 158, 11, 0.08);
+      padding: 16px 20px;
+      border-radius: 0 12px 12px 0;
+      margin: 20px 0;
+    }
+    .callout strong { color: #fcd34d; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#">
+        <img src="assets/logo.svg" alt="MDMPatcher-Linux Logo" />
+        <span>MDMPatcher-Linux <code style="color:#6ee7b7;">v2.7.0</code></span>
+      </a>
+      <nav class="nav-links">
+        <a href="#ios27">iOS 27 Architecture</a>
+        <a href="#install">Fedora &amp; Linux Install</a>
+        <a href="#compatibility">iOS 9–27 Matrix</a>
+        <a href="#usage">CLI &amp; GUI Guide</a>
+        <a href="REVERSE_ENGINEERING.html">Reverse Engineering</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero" style="margin-top:0;">
+      <img class="hero-banner" src="assets/banner.svg" alt="MDMPatcher-Linux Official Banner" />
+      <p class="lead" style="margin: 0 auto 16px;">
+        The complete Linux port and reverse-engineered upgrade of <strong>MDMPatcher-Universal</strong> and
+        <strong>MDMPatcher-Enhanced</strong>—engineered for <strong>Fedora Linux</strong>, <strong>Ubuntu/Debian</strong>,
+        and <strong>Arch Linux</strong> with native multi-vector support for <strong>iOS 9 through iOS 26 &amp; iOS 27+</strong>.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#install">Quick Install (Fedora / Ubuntu / Arch)</a>
+        <a class="btn btn-secondary" href="#ios27">How iOS 27 Support Works</a>
+        <a class="btn btn-secondary" href="https://github.com/supermario3D1/mdmpatcher-linux">View on GitHub</a>
+      </div>
+    </section>
+
+    <section id="ios27">
+      <span class="section-tag">iOS 27 Breakthrough</span>
+      <h2>How MDMPatcher-Linux Reliably Works on iOS 27 (Without Factory-Reset Loops)</h2>
+      <p class="lead">
+        In iOS 27 (builds <code>24A+</code>), Apple hardened <code>BackupAgent2</code> against legacy partial/sparse restores
+        and updated <code>backupd</code> (WWDC26 Device Management) to ignore stale MDM profiles from synthetic partial backups.
+        MDMPatcher-Linux solves this with a <strong>Dual-Vector iOS 27 Engine</strong>:
+      </p>
+
+      <img src="assets/ios27-architecture.svg" alt="iOS 27 Architecture Diagram" style="width:100%; border-radius:16px; margin-bottom:24px;" />
+
+      <div class="grid-3">
+        <div class="card">
+          <h3>⚡ Vector A: Direct USB <code>MCInstall</code> Push</h3>
+          <p>
+            Connects over USB Lockdown directly to <code>com.apple.mobile.MCInstall</code> (<code>MobileConfigService</code>)
+            and pushes <code>SetCloudConfiguration</code> with all <strong>80 iOS 27 <code>SkipSetup</code> panes</strong>
+            (including <code>OSShowcase</code>, <code>SafetyAndHandling</code>, <code>AgeBasedSafetySettings</code>,
+            <code>Intelligence</code>, and <code>CameraButton</code>) plus persistent <code>lockdownd</code>
+            <code>com.apple.purplebuddy</code> completion flags—<strong>with zero partial-restore wipe risk</strong>.
+          </p>
+        </div>
+        <div class="card">
+          <h3>🛡️ Vector B: iOS 27 G1 Donor-Cloned Pipeline</h3>
+          <p>
+            Strips active <code>MDM.plist</code> and <code>MDMEvents.plist</code> from
+            <code>SysSharedContainerDomain-systemgroup.com.apple.configurationprofiles</code>, clones real donor
+            <code>MBFile</code> blobs with SpringBoard <code>ExtendedAttributes</code>, synthesizes parent directory rows,
+            and stamps strictly unique monotonic <code>InodeNumber</code> values so iOS 27's <code>BackupAgent2</code>
+            inode-deduplication pass accepts every injected file.
+          </p>
+        </div>
+        <div class="card">
+          <h3>🔒 6-Point Pre-Restore Verification Gate</h3>
+          <p>
+            Before any restore packet is sent over USB, MDMPatcher-Linux validates SQLite integrity, atomic
+            <code>Manifest.plist</code> / <code>Status.plist</code> state, SHA-1 <code>Digest</code> equality,
+            non-zero payload sizes, parent directory chains, and inode uniqueness—then restores with
+            <code>--no-reboot</code> and a 60s SSL handshake watchdog.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <span class="section-tag">Linux Installation</span>
+      <h2>Step-by-Step Installation (Fedora, Ubuntu/Debian, Arch, openSUSE)</h2>
+      <p class="lead">
+        Select your Linux distribution below, or run the unified <code>./scripts/install.sh</code> installer which
+        automatically configures packages, <code>usbmuxd</code>, and Apple USB <code>udev</code> rules.
+      </p>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('fedora', this)">Fedora Linux (Workstation / KDE / Silverblue)</button>
+        <button class="tab-btn" onclick="switchTab('ubuntu', this)">Ubuntu / Debian / Mint / Pop!_OS</button>
+        <button class="tab-btn" onclick="switchTab('arch', this)">Arch Linux / Manjaro / EndeavourOS</button>
+        <button class="tab-btn" onclick="switchTab('opensuse', this)">openSUSE Tumbleweed / Leap</button>
+      </div>
+
+      <div id="tab-fedora" class="tab-panel active">
+        <div class="card">
+          <h3>Fedora Linux 39 / 40 / 41 / 42 / 43+ Installation</h3>
+          <p>Works out-of-the-box on Fedora Workstation, Fedora KDE Plasma, Nobara, Ultramarine, RHEL/Alma/Rocky, and Fedora Silverblue/Kinoite:</p>
+          <pre><code># 1. Clone the repository
+git clone https://github.com/supermario3D1/mdmpatcher-linux.git
+cd mdmpatcher-linux
+
+# 2. Option A: One-command automated Fedora setup (installs dnf packages, udev rules, usbmuxd &amp; C binary)
+./scripts/install.sh --venv
+
+# 2. Option B: Manual Fedora dnf installation
+sudo dnf install -y usbmuxd libimobiledevice libimobiledevice-utils libplist \
+  openssl openssl-libs python3 python3-pip python3-tkinter \
+  gcc make pkgconf-pkg-config libimobiledevice-devel libimobiledevice-glue-devel \
+  libplist-devel openssl-devel libzip-devel readline-devel
+
+# Install Apple USB udev rules &amp; start usbmuxd on Fedora
+sudo cp scripts/39-usbmuxd-mdmpatcher.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules &amp;&amp; sudo udevadm trigger
+sudo systemctl start usbmuxd.service
+
+# Optional: Install pymobiledevice3 for iOS 27 Direct MCInstall support
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -e ".[usb]"</code></pre>
+        </div>
+      </div>
+
+      <div id="tab-ubuntu" class="tab-panel">
+        <div class="card">
+          <h3>Ubuntu / Debian / Linux Mint / Pop!_OS / Kali Installation</h3>
+          <pre><code>git clone https://github.com/supermario3D1/mdmpatcher-linux.git
+cd mdmpatcher-linux
+
+# Automated setup:
+./scripts/install.sh --venv
+
+# Or manual apt installation:
+sudo apt update
+sudo apt install -y usbmuxd libimobiledevice6 libimobiledevice-utils ideviceinstaller \
+  libplist-utils openssl python3 python3-pip python3-venv python3-tk \
+  build-essential pkg-config libimobiledevice-dev libplist-dev libssl-dev libzip-dev libreadline-dev</code></pre>
+        </div>
+      </div>
+
+      <div id="tab-arch" class="tab-panel">
+        <div class="card">
+          <h3>Arch Linux / Manjaro / EndeavourOS / CachyOS Installation</h3>
+          <pre><code>git clone https://github.com/supermario3D1/mdmpatcher-linux.git
+cd mdmpatcher-linux
+
+# Automated setup:
+./scripts/install.sh --venv
+
+# Or manual pacman installation:
+sudo pacman -Sy --needed usbmuxd libimobiledevice libplist openssl libzip readline python python-pip tk base-devel pkgconf</code></pre>
+        </div>
+      </div>
+
+      <div id="tab-opensuse" class="tab-panel">
+        <div class="card">
+          <h3>openSUSE Tumbleweed / Leap Installation</h3>
+          <pre><code>git clone https://github.com/supermario3D1/mdmpatcher-linux.git
+cd mdmpatcher-linux
+
+./scripts/install.sh --venv</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="compatibility">
+      <span class="section-tag">Firmware Matrix</span>
+      <h2>iOS &amp; iPadOS Compatibility Matrix (iOS 9 – iOS 27+)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>iOS / iPadOS Version</th>
+              <th>Build Range</th>
+              <th>Recommended Mode</th>
+              <th>Primary Mechanism</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>iOS 27.0+</strong></td>
+              <td><code>24A335+</code></td>
+              <td><code>ios27</code> (auto-detected)</td>
+              <td>Vector A (<code>MCInstall</code> 80-pane <code>SetCloudConfiguration</code> + <code>lockdownd</code>) + Vector B (G1 Donor-Cloned <code>Manifest.db</code>)</td>
+              <td><span class="pill-ok">Supported</span></td>
+            </tr>
+            <tr>
+              <td><strong>iOS 26.0 – 26.7</strong></td>
+              <td><code>23A+ – 23G+</code></td>
+              <td><code>enhanced</code> / <code>ios27</code></td>
+              <td><code>SysSharedContainerDomain</code> + <code>ManagedPreferencesDomain</code> + <code>MCInstall</code></td>
+              <td><span class="pill-ok">Supported</span></td>
+            </tr>
+            <tr>
+              <td><strong>iOS 17.0 – 18.6</strong></td>
+              <td><code>21A+ – 22G+</code></td>
+              <td><code>enhanced</code></td>
+              <td><code>SysSharedContainerDomain</code> + <code>ManagedPreferencesDomain</code> + Partial Setup Bypass</td>
+              <td><span class="pill-ok">Supported</span></td>
+            </tr>
+            <tr>
+              <td><strong>iOS 15.0 – 16.7.x</strong></td>
+              <td><code>19A+ – 20H+</code></td>
+              <td><code>enhanced</code> / <code>modern</code></td>
+              <td><code>CloudConfigurationDetails.plist</code> + <code>MCMeta.plist</code> Build Sync</td>
+              <td><span class="pill-ok">Supported</span></td>
+            </tr>
+            <tr>
+              <td><strong>iOS 9.0 – 14.8.1</strong></td>
+              <td><code>13A+ – 18H+</code></td>
+              <td><code>enhanced</code> / <code>legacy</code></td>
+              <td><code>HomeDomain/Library/ConfigurationProfiles/*</code> + <code>Manifest.mbdb</code></td>
+              <td><span class="pill-ok">Supported</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <strong>Important Post-Reboot Step on iOS 17.2, iOS 18, iOS 26 &amp; iOS 27+:</strong><br />
+        When the device reboots after patching, if iOS displays the <em>"iPhone Partially Set Up"</em> screen, tap
+        <strong>"Continue with Partial Setup"</strong> (small button at the bottom) — do <strong>not</strong> tap the blue
+        <em>"Finish Setting Up"</em> button. The device will immediately enter the Home Screen with Remote Management bypassed.
+      </div>
+    </section>
+
+    <section id="usage">
+      <span class="section-tag">CLI &amp; GUI Reference</span>
+      <h2>Quick Start &amp; Command Reference</h2>
+      <pre><code># 1. Verify USB connection and check iOS version / Find My status
+./mdmpatcher.py info
+
+# 2. One-command auto-detect &amp; patch (auto-selects 'ios27' engine on iOS 27+ or 'enhanced' on iOS 9-26)
+./mdmpatcher.py patch
+
+# 3. iOS 27 Vector A Only: Direct USB MCInstall CloudConfiguration &amp; Setup Assistant Skip (No Restore)
+./mdmpatcher.py skip-setup
+
+# 4. iOS 27 Vector B Full Protective Pipeline (Full Device Backup -> MDM Purge &amp; Donor Injection -> Verified Restore)
+./mdmpatcher.py patch --full-backup-g1
+
+# 5. Patch an existing Backup v3.3+ (Manifest.db) directory offline
+./mdmpatcher.py patch-backup ./my_device_backup --block-ota
+
+# 6. Launch the Linux Desktop GUI (Tkinter) or Interactive Terminal UI
+./mdmpatcher.py gui</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>MDMPatcher-Linux v2.7.0</strong> • Open-source security research &amp; authorized device recovery toolkit • MIT License</p>
+  </footer>
+
+  <script>
+    function switchTab(id, btn) {
+      document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + id).classList.add('active');
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>

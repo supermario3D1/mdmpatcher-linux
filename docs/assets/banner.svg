@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="100%" height="340" role="img" aria-label="MDMPatcher-Linux Official Banner">
+  <defs>
+    <linearGradient id="bannerBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070b14"/>
+      <stop offset="45%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#091526"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="50%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="65%" stop-color="#bae6fd"/>
+      <stop offset="100%" stop-color="#6ee7b7"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="1" opacity="0.55"/>
+    </pattern>
+  </defs>
+
+  <!-- Main Card Background -->
+  <rect x="0" y="0" width="1200" height="340" rx="22" fill="url(#bannerBg)"/>
+  <rect x="0" y="0" width="1200" height="340" rx="22" fill="url(#grid)"/>
+  <rect x="2" y="2" width="1196" height="336" rx="20" fill="none" stroke="url(#accentGrad)" stroke-width="2.5" opacity="0.8"/>
+
+  <!-- Top Accent Ribbon -->
+  <rect x="40" y="0" width="1120" height="4" fill="url(#accentGrad)"/>
+
+  <!-- Left Shield + iPhone Icon -->
+  <g transform="translate(68, 52)">
+    <rect x="0" y="0" width="220" height="220" rx="48" fill="#0b1324" stroke="url(#accentGrad)" stroke-width="3.5"/>
+    <path d="M110 26 L176 53 L176 112 C176 156 146 186 110 201 C74 186 44 156 44 112 L44 53 Z"
+          fill="#0f172a" stroke="url(#accentGrad)" stroke-width="4"/>
+    <rect x="78" y="48" width="64" height="118" rx="12" fill="#070b14" stroke="#38bdf8" stroke-width="2.8"/>
+    <rect x="98" y="55" width="24" height="5" rx="2.5" fill="#1e293b"/>
+    <path d="M98 94 V83 C98 75 104 69 111 69 C118 69 123 74 124 80"
+          fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round"/>
+    <rect x="92" y="94" width="36" height="30" rx="6" fill="url(#accentGrad)"/>
+    <path d="M103 109 L108 115 L119 104"
+          fill="none" stroke="#070b14" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="88" y="133" width="44" height="20" rx="4" fill="#111827" stroke="#3b82f6" stroke-width="1.3"/>
+    <path d="M95 140 L100 143 L95 146" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="104" y1="146" x2="113" y2="146" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Right Content Area -->
+  <g transform="translate(328, 74)">
+    <!-- Release Pill -->
+    <rect x="0" y="0" width="318" height="28" rx="14" fill="#0c2438" stroke="#06b6d4" stroke-width="1.2"/>
+    <circle cx="16" cy="14" r="5" fill="#10b981"/>
+    <text x="30" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="700" fill="#67e8f9">
+      RELEASE v2.7.0 • iOS 27 G1 + MCINSTALL
+    </text>
+
+    <!-- Main Title -->
+    <text x="0" y="78" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="52" font-weight="900" fill="url(#textGrad)" letter-spacing="-1">
+      MDMPatcher-Linux
+    </text>
+
+    <!-- Subtitle -->
+    <text x="0" y="114" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="500" fill="#94a3b8">
+      Universal iOS &amp; iPadOS Remote Management &amp; Setup Assistant Patcher for Linux
+    </text>
+    <text x="0" y="142" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15.5" fill="#64748b">
+      Reverse-engineered from MDMPatcher-Universal &amp; MDMPatcher-Enhanced • Built for iOS 9 through iOS 26 &amp; iOS 27+
+    </text>
+
+    <!-- Feature Badges Row -->
+    <g transform="translate(0, 168)">
+      <!-- Badge 1: iOS 27 Ready -->
+      <rect x="0" y="0" width="166" height="36" rx="8" fill="#062c24" stroke="#10b981" stroke-width="1.5"/>
+      <text x="83" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="700" fill="#6ee7b7" text-anchor="middle">
+        ✓ iOS 27.0+ Safe
+      </text>
+
+      <!-- Badge 2: Fedora Linux -->
+      <rect x="180" y="0" width="174" height="36" rx="8" fill="#102340" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="267" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="700" fill="#93c5fd" text-anchor="middle">
+        Fedora • Ubuntu • Arch
+      </text>
+
+      <!-- Badge 3: RNCryptor v3 -->
+      <rect x="368" y="0" width="196" height="36" rx="8" fill="#172033" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="466" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="700" fill="#7dd3fc" text-anchor="middle">
+        RNCryptor v3 Deobfuscated
+      </text>
+
+      <!-- Badge 4: Dual Engine -->
+      <rect x="578" y="0" width="214" height="36" rx="8" fill="#1e1b38" stroke="#818cf8" stroke-width="1.5"/>
+      <text x="685" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="700" fill="#c7d2fe" text-anchor="middle">
+        Python CLI/GUI + Native C
+      </text>
+    </g>
+  </g>
+</svg>
