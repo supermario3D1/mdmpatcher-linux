@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdmpatcher-linux"
+version = "2.7.0"
+description = "Linux port and iOS 9-27+ reverse-engineered upgrade of MDMPatcher-Universal and MDMPatcher-Enhanced"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = []
+
+[project.optional-dependencies]
+usb = [
+    "pymobiledevice3>=2.0.0",
+]
+
+[project.scripts]
+mdmpatcher = "mdmpatcher.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mdmpatcher*"]

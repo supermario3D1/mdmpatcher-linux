@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 440" width="100%" height="440" role="img" aria-label="iOS 27 Dual-Vector MDM Bypass Architecture">
+  <defs>
+    <linearGradient id="archBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="vecAGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="vecBGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1100" height="440" rx="18" fill="url(#archBg)" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Header -->
+  <text x="550" y="42" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="800" fill="#f8fafc" text-anchor="middle">
+    MDMPatcher-Linux: iOS 27 Multi-Vector Bypass Architecture (Why It Doesn't Loop or Wipe)
+  </text>
+  <text x="550" y="68" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#94a3b8" text-anchor="middle">
+    Overcoming iOS 27 BackupAgent2 Safe-State Recovery &amp; WWDC26 Backup MDM Restoration Policies
+  </text>
+
+  <!-- Left Node: Linux Host -->
+  <g transform="translate(36, 115)">
+    <rect x="0" y="0" width="220" height="275" rx="14" fill="#111827" stroke="#3b82f6" stroke-width="2"/>
+    <rect x="0" y="0" width="220" height="40" rx="14" fill="#1e3a8a"/>
+    <text x="110" y="25" font-family="system-ui, sans-serif" font-size="14.5" font-weight="800" fill="#f8fafc" text-anchor="middle">
+      LINUX HOST (Fedora / Ubuntu)
+    </text>
+    <text x="20" y="70" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700" fill="#38bdf8">1. Device Discovery</text>
+    <text x="20" y="90" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• usbmuxd + udev (05ac)</text>
+    <text x="20" y="108" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• ideviceinfo / pymobiledevice3</text>
+
+    <text x="20" y="142" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700" fill="#10b981">2. RNCryptor v3 Engine</text>
+    <text x="20" y="162" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• 6-pair byte swap involution</text>
+    <text x="20" y="180" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• libcrypto.so.3 AES-256-CBC</text>
+
+    <text x="20" y="214" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700" fill="#a78bfa">3. Firmware Router</text>
+    <text x="20" y="234" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• iOS 9–26: Enhanced MBDB</text>
+    <text x="20" y="252" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• iOS 27 (24A+): Vector A + B</text>
+  </g>
+
+  <!-- Vector A Top Box -->
+  <g transform="translate(300, 100)">
+    <rect x="0" y="0" width="490" height="135" rx="14" fill="#0c1e33" stroke="url(#vecAGrad)" stroke-width="2"/>
+    <rect x="16" y="14" width="260" height="24" rx="6" fill="#06b6d4"/>
+    <text x="146" y="30" font-family="ui-monospace, monospace" font-size="12" font-weight="800" fill="#06121e" text-anchor="middle">
+      VECTOR A: DIRECT USB MCINSTALL PUSH
+    </text>
+    <text x="290" y="30" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#67e8f9">
+      Zero Backup-Restore Risk
+    </text>
+    <text x="18" y="60" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • Connects to <tspan font-family="ui-monospace, monospace" fill="#38bdf8">com.apple.mobile.MCInstall</tspan> (<tspan font-family="ui-monospace, monospace">SetCloudConfiguration</tspan>)
+    </text>
+    <text x="18" y="83" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • Injects all 80 iOS 27 <tspan font-family="ui-monospace, monospace" fill="#6ee7b7">SkipSetup</tspan> panes (<tspan font-family="ui-monospace, monospace">OSShowcase, Intelligence...</tspan>)
+    </text>
+    <text x="18" y="106" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • Sets <tspan font-family="ui-monospace, monospace" fill="#38bdf8">lockdownd</tspan> <tspan font-family="ui-monospace, monospace">com.apple.purplebuddy</tspan> SetupState = Finished
+    </text>
+  </g>
+
+  <!-- Vector B Bottom Box -->
+  <g transform="translate(300, 255)">
+    <rect x="0" y="0" width="490" height="150" rx="14" fill="#09221c" stroke="url(#vecBGrad)" stroke-width="2"/>
+    <rect x="16" y="14" width="290" height="24" rx="6" fill="#10b981"/>
+    <text x="161" y="30" font-family="ui-monospace, monospace" font-size="12" font-weight="800" fill="#051b14" text-anchor="middle">
+      VECTOR B: iOS 27 G1 DONOR-CLONED PIPELINE
+    </text>
+    <text x="320" y="30" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#6ee7b7">
+      BackupAgent2 Hardened
+    </text>
+    <text x="18" y="60" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • Strips <tspan font-family="ui-monospace, monospace" fill="#fca5a5">MDM.plist</tspan> &amp; <tspan font-family="ui-monospace, monospace" fill="#fca5a5">MDMEvents.plist</tspan> from <tspan font-family="ui-monospace, monospace">SysSharedContainerDomain</tspan>
+    </text>
+    <text x="18" y="83" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • Clones donor <tspan font-family="ui-monospace, monospace" fill="#6ee7b7">MBFile</tspan> blobs + SpringBoard <tspan font-family="ui-monospace, monospace">ExtendedAttributes</tspan>
+    </text>
+    <text x="18" y="106" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • Stamps unique monotonic <tspan font-family="ui-monospace, monospace" fill="#6ee7b7">InodeNumber</tspan> + synthesizes parent dir rows
+    </text>
+    <text x="18" y="129" font-family="system-ui, sans-serif" font-size="13" fill="#e2e8f0">
+      • 6-Point Verification Gate → <tspan font-family="ui-monospace, monospace" fill="#38bdf8">--no-reboot</tspan> Restore → Controlled Restart
+    </text>
+  </g>
+
+  <!-- Right Node: Target iOS 27 Device -->
+  <g transform="translate(834, 115)">
+    <rect x="0" y="0" width="230" height="275" rx="14" fill="#111827" stroke="#10b981" stroke-width="2"/>
+    <rect x="0" y="0" width="230" height="40" rx="14" fill="#065f46"/>
+    <text x="115" y="25" font-family="system-ui, sans-serif" font-size="14.5" font-weight="800" fill="#f8fafc" text-anchor="middle">
+      iOS / iPadOS 27+ DEVICE
+    </text>
+    <text x="20" y="72" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700" fill="#6ee7b7">✓ profiled &amp; MCInstall</text>
+    <text x="20" y="92" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• IsSupervised = false</text>
+    <text x="20" y="110" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• CloudConfigUIComplete = true</text>
+
+    <text x="20" y="146" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700" fill="#38bdf8">✓ Setup.app (purplebuddy)</text>
+    <text x="20" y="166" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• SetupDone = true</text>
+    <text x="20" y="184" font-family="system-ui, sans-serif" font-size="12" fill="#cbd5e1">• All 80 Setup Panes Skipped</text>
+
+    <rect x="18" y="208" width="194" height="48" rx="8" fill="#062c24" stroke="#10b981" stroke-width="1.5"/>
+    <text x="115" y="229" font-family="system-ui, sans-serif" font-size="12.5" font-weight="800" fill="#6ee7b7" text-anchor="middle">
+      Boots to Home Screen
+    </text>
+    <text x="115" y="246" font-family="system-ui, sans-serif" font-size="11" fill="#a7f3d0" text-anchor="middle">
+      No Remote Management Lock
+    </text>
+  </g>
+
+  <!-- Connectors -->
+  <path d="M256 190 L296 168" stroke="#38bdf8" stroke-width="3" fill="none"/>
+  <path d="M256 290 L296 320" stroke="#10b981" stroke-width="3" fill="none"/>
+  <path d="M790 168 L830 190" stroke="#38bdf8" stroke-width="3" fill="none"/>
+  <path d="M790 320 L830 290" stroke="#10b981" stroke-width="3" fill="none"/>
+</svg>

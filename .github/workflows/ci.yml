@@ -1,0 +1,43 @@
+name: CI — Linux Matrix (Ubuntu & Fedora)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test-ubuntu:
+    name: Python & C Suite (Ubuntu Latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libimobiledevice-dev libplist-dev libssl-dev libzip-dev libreadline-dev
+      - name: Run Unit & Integration Tests
+        run: |
+          python3 -m unittest discover -s tests -v
+      - name: Verify CLI Subcommands
+        run: |
+          ./mdmpatcher.py --version
+          ./mdmpatcher.py deobfuscate -a assets -o /tmp/deob_check
+
+  test-fedora:
+    name: Python & Installer Check (Fedora Container)
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Fedora packages via dnf
+        run: |
+          dnf install -y python3 openssl openssl-libs git bash findutils
+      - name: Run Unit & Integration Tests on Fedora
+        run: |
+          python3 -m unittest discover -s tests -v

@@ -1,0 +1,2 @@
+# Optional pure-Python USB/Lockdown/MobileBackup2 backend (recommended on Linux if libimobiledevice CLI is not installed)
+pymobiledevice3>=2.0.0
