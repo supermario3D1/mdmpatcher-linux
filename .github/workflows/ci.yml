@@ -48,13 +48,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run the one-line installer from the current branch
+        env:
+          # `pull_request` events report the ref as "<pr>/merge"; use the real branch.
+          MDM_TEST_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/scripts/install.sh" \
-            | bash -s -- --dir "$HOME/mdmpatcher-ci" --branch "${GITHUB_REF_NAME}"
+          echo "Branch under test: ${MDM_TEST_BRANCH}"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${MDM_TEST_BRANCH}/scripts/install.sh" \
+            | bash -s -- --dir "$HOME/mdmpatcher-ci" --branch "${MDM_TEST_BRANCH}"
       - name: Verify the `mdmpatcher` command installed on PATH
         run: |
           export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
-          command -v mdmpatcher
+          ls -l /usr/local/bin/mdmpatcher "$HOME/.local/bin/mdmpatcher" 2>&1 || true
+          command -v mdmpatcher || { echo "::error::launcher not found on PATH"; exit 1; }
           mdmpatcher --version
           mdmpatcher deobfuscate -a "$HOME/mdmpatcher-ci/assets" -o /tmp/deob_ci
       - name: Verify `mdmpatcher update` reports an up-to-date checkout
