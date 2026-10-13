@@ -13,7 +13,7 @@
 
 <p align="center">
   <strong>The Complete Linux Port &amp; Reverse-Engineered iOS 9 – 27+ Upgrade of <code>MDMPatcher-Universal</code> &amp; <code>MDMPatcher-Enhanced</code></strong><br />
-  <a href="#quick-install-one-command">Quick Install</a> •
+  <a href="#quick-install-one-command">Quick Install (One Command)</a> •
   <a href="#how-ios-27-support-works-dual-vector-engine">iOS 27 Engine</a> •
   <a href="#fedora-linux-workstation--kde--server--silverblue">Fedora Guide</a> •
   <a href="#step-by-step-device-patching-guide">Usage Guide</a> •
@@ -57,7 +57,7 @@ In **iOS 27** (builds `24A335+`), Apple introduced two major changes that broke 
 ### ⚡ Vector A: Direct USB `MobileConfigService` (`com.apple.mobile.MCInstall`) + `lockdownd` Push
 - Connects over USB Lockdown directly to `com.apple.mobile.MCInstall` (`MobileConfigService`) and executes `SetCloudConfiguration` with all **80 canonical iOS 27 `SkipSetup` pane identifiers** (including `OSShowcase`, `SafetyAndHandling`, `AgeBasedSafetySettings`, `EnableLockdownMode`, `AdditionalPrivacySettings`, `WebContentFiltering`, `CameraButton`, and `Intelligence`), `CloudConfigurationUIComplete = True`, `ConfigurationWasApplied = True`, `IsSupervised = False`, and `PostSetupProfileWasInstalled = True`.
 - Simultaneously writes persistent `lockdownd` completion flags (`com.apple.purplebuddy`: `SetupState = "Finished"`, `buddyComplete = True`, `SkipSetup = True`; `com.apple.mobile.iTunes`: `SetupComplete = True`, `BuddySetupComplete = True`).
-- **Zero Partial-Restore Risk**: Can be run standalone via `./mdmpatcher.py skip-setup` without performing any backup restore at all.
+- **Zero Partial-Restore Risk**: Can be run standalone via `mdmpatcher skip-setup` without performing any backup restore at all.
 
 ### 🛡️ Vector B: iOS 27 G1 Donor-Cloned `Manifest.db` Pipeline + 6-Point Verification Gate
 - **MDM Profile Purge**: Strips active `MDM.plist`, `MDMEvents.plist`, and `ManagingProfile.plist` from `SysSharedContainerDomain-systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles/`.
@@ -71,36 +71,98 @@ In **iOS 27** (builds `24A335+`), Apple introduced two major changes that broke 
 
 | iOS / iPadOS Version | Build Numbers | Recommended Command | Active Engine | Status |
 | :--- | :--- | :--- | :--- | :---: |
-| **iOS / iPadOS 27.0+** | `24A335+` | `./mdmpatcher.py patch` *(auto-selects `ios27`)* or `./mdmpatcher.py skip-setup` | Vector A (`MCInstall`) + Vector B (G1 `Manifest.db`) | ✅ **Supported** |
-| **iOS / iPadOS 26.0 – 26.7** | `23A+ – 23G+` | `./mdmpatcher.py patch` | `enhanced` / `ios27` + `MCInstall` | ✅ **Supported** |
-| **iOS / iPadOS 17.0 – 18.6** | `21A+ – 22G+` | `./mdmpatcher.py patch` | `enhanced` (`SysSharedContainerDomain` + `ManagedPreferencesDomain`) | ✅ **Supported** |
-| **iOS / iPadOS 15.0 – 16.7.x** | `19A+ – 20H+` | `./mdmpatcher.py patch` | `enhanced` / `modern` | ✅ **Supported** |
-| **iOS / iPadOS 9.0 – 14.8.1** | `13A+ – 18H+` | `./mdmpatcher.py patch` | `enhanced` / `legacy` (`Manifest.mbdb`) | ✅ **Supported** |
+| **iOS / iPadOS 27.0+** | `24A335+` | `mdmpatcher patch` *(auto-selects `ios27`)* or `mdmpatcher skip-setup` | Vector A (`MCInstall`) + Vector B (G1 `Manifest.db`) | ✅ **Supported** |
+| **iOS / iPadOS 26.0 – 26.7** | `23A+ – 23G+` | `mdmpatcher patch` | `enhanced` / `ios27` + `MCInstall` | ✅ **Supported** |
+| **iOS / iPadOS 17.0 – 18.6** | `21A+ – 22G+` | `mdmpatcher patch` | `enhanced` (`SysSharedContainerDomain` + `ManagedPreferencesDomain`) | ✅ **Supported** |
+| **iOS / iPadOS 15.0 – 16.7.x** | `19A+ – 20H+` | `mdmpatcher patch` | `enhanced` / `modern` | ✅ **Supported** |
+| **iOS / iPadOS 9.0 – 14.8.1** | `13A+ – 18H+` | `mdmpatcher patch` | `enhanced` / `legacy` (`Manifest.mbdb`) | ✅ **Supported** |
 
 ---
 
 ## Installation Instructions (Linux)
 
-### Quick Install (One Command — Auto-Detects Fedora, Ubuntu, Debian, Arch, openSUSE)
+### Quick Install (One Command)
+
+Paste this into a terminal and you are done — no manual cloning, no copying files, no activating a
+virtual environment. The installer downloads MDMPatcher-Linux straight from the `main` branch,
+installs everything it needs, and gives you a `mdmpatcher` command you can run from any directory
+on Fedora, Ubuntu/Debian, Arch, openSUSE and their derivatives.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh | bash
+```
+
+Then just run:
+
+```bash
+mdmpatcher patch          # or: mdmpatcher info | skip-setup | gui
+```
+
+> **No `git clone`, no `cd`, no `source .venv/bin/activate` needed.**
+> The installer creates the command for you (in `/usr/local/bin` or `~/.local/bin`).
+
+Prefer a specific location or branch? Pass options through `bash -s --`:
+
+```bash
+# Install into a custom directory
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh \
+  | bash -s -- --dir ~/tools/mdmpatcher
+
+# Track a different branch (default: main)
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh \
+  | bash -s -- --branch main
+```
+
+#### Already cloned the repository? (Equivalent manual route)
 
 ```bash
 git clone https://github.com/supermario3D1/mdmpatcher-linux.git
 cd mdmpatcher-linux
-./scripts/install.sh --venv
-source .venv/bin/activate
+./scripts/install.sh
 ```
 
 The `./scripts/install.sh` script automatically:
-1. Detects your Linux distribution (`dnf`, `rpm-ostree`, `apt`, `pacman`, or `zypper`) and installs `usbmuxd`, `libimobiledevice`, `openssl`, `python3`, and Tkinter.
-2. Installs `/etc/udev/rules.d/39-usbmuxd-mdmpatcher.rules` so non-root users can communicate with iPhones/iPads in Normal, Recovery, and Composite USB modes without `Permission denied` errors.
-3. Starts the `usbmuxd` systemd service.
-4. Creates a `.venv` virtual environment with `pymobiledevice3` (used for iOS 27 Direct `MCInstall` communication) and compiles the optional native C binary (`src/c/mdm_patch`).
+1. **Clones/updates the source from `main`** if it is not already running inside a checkout (so the
+   one-liner above works even with nothing downloaded).
+2. Detects your Linux distribution (`dnf`, `rpm-ostree`, `apt`, `pacman`, or `zypper`) and installs `usbmuxd`, `libimobiledevice`, `openssl`, `python3`, and Tkinter.
+3. Installs `/etc/udev/rules.d/39-usbmuxd-mdmpatcher.rules` so non-root users can communicate with iPhones/iPads in Normal, Recovery, and Composite USB modes without `Permission denied` errors.
+4. Starts the `usbmuxd` systemd service.
+5. Creates a `.venv` virtual environment with `pymobiledevice3` (used for iOS 27 Direct `MCInstall` communication) and compiles the optional native C binary (`src/c/mdm_patch`).
+6. **Installs a `mdmpatcher` launcher** on your PATH so the tool runs from anywhere.
+
+<details>
+<summary><strong>Installer options (click to expand)</strong></summary>
+
+| Option | Description |
+| :--- | :--- |
+| `--dir DIR` | Install directory (default: `~/mdmpatcher-linux`, or the current checkout) |
+| `--branch BRANCH` | Git branch to clone/track (default: `main`) |
+| `--repo URL` | Git repository URL (default: the official GitHub repo) |
+| `--venv` / `--no-venv` | Create a `.venv` with `pymobiledevice3` (default: `--venv`) or use system Python |
+| `--skip-packages` | Do not touch distro packages (already installed / offline) |
+| `--skip-udev` | Do not install the Apple USB udev rules |
+| `--no-c-build` | Do not compile the optional native C binary |
+| `--uninstall` | Remove the `mdmpatcher` command and udev rules (`--purge` also deletes the install dir) |
+
+Environment overrides: `MDM_INSTALL_DIR`, `MDM_BRANCH`, `MDM_REPO_URL`, `MDM_BIN_DIR`, `MDM_SKIP_PACKAGES`.
+
+</details>
+
+### Keeping It Up To Date
+
+```bash
+mdmpatcher update                 # fast-forward to the latest `main` and refresh dependencies
+mdmpatcher update --branch main   # or pin a specific branch
+```
 
 ---
 
 ### Fedora Linux (Workstation / KDE / Server / Silverblue)
 
 **MDMPatcher-Linux** treats **Fedora Linux (Fedora 39, 40, 41, 42, 43, Rawhide)** as well as Fedora derivatives (**Nobara**, **Ultramarine**, **Bazzite**, **RHEL / AlmaLinux / Rocky Linux**) as first-class targets, including native lookup of `/lib64/libcrypto.so.3`.
+
+> **These steps are optional.** The one-command installer above already detects your distro
+> and does all of this for you. Use them only if you prefer to install packages yourself.
 
 #### Standard Fedora (`dnf`)
 ```bash
@@ -131,10 +193,8 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor=05ac
 sudo systemctl start usbmuxd.service
 
-# 3. Install Python USB backend (recommended for iOS 27 Direct MCInstall support)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[usb]"
+# 3. Create the virtualenv, install the Python USB backend and register the `mdmpatcher` command
+./scripts/install.sh --skip-packages
 
 # 4. (Optional) Compile the native C binary
 make build-c
@@ -146,13 +206,14 @@ sudo rpm-ostree install --idempotent --allow-inactive \
   usbmuxd libimobiledevice libimobiledevice-utils python3 python3-tkinter openssl
 sudo cp scripts/39-usbmuxd-mdmpatcher.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[usb]"
+./scripts/install.sh --skip-packages
 ```
 
 ---
 
 ### Ubuntu / Debian / Linux Mint / Pop!_OS / Kali
+> **These steps are optional.** The one-command installer above already detects your distro
+> and does all of this for you. Use them only if you prefer to install packages yourself.
 
 ```bash
 sudo apt update
@@ -179,14 +240,14 @@ sudo cp scripts/39-usbmuxd-mdmpatcher.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo systemctl start usbmuxd.service
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[usb]"
+./scripts/install.sh --skip-packages
 ```
 
 ---
 
 ### Arch Linux / Manjaro / EndeavourOS / CachyOS
+> **These steps are optional.** The one-command installer above already detects your distro
+> and does all of this for you. Use them only if you prefer to install packages yourself.
 
 ```bash
 sudo pacman -Sy --needed \
@@ -206,14 +267,14 @@ sudo cp scripts/39-usbmuxd-mdmpatcher.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo systemctl start usbmuxd.service
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[usb]"
+./scripts/install.sh --skip-packages
 ```
 
 ---
 
 ### openSUSE Tumbleweed / Leap
+> **These steps are optional.** The one-command installer above already detects your distro
+> and does all of this for you. Use them only if you prefer to install packages yourself.
 
 ```bash
 sudo zypper install -y \
@@ -230,11 +291,20 @@ sudo zypper install -y \
   libopenssl-devel \
   libzip-devel \
   readline-devel
+
+sudo cp scripts/39-usbmuxd-mdmpatcher.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo systemctl start usbmuxd.service
+
+./scripts/install.sh --skip-packages
 ```
 
 ---
 
 ## Step-by-Step Device Patching Guide
+
+All commands below use the `mdmpatcher` command that the installer puts on your PATH, so you can
+run them from **any** directory. (Inside a checkout, `./mdmpatcher.py …` does exactly the same.)
 
 ### Step 1: Prepare the iPhone or iPad
 1. Ensure the device is freshly erased/restored on the **Setup Assistant ("Hello")** screen (or unlocked on the Home Screen with **Find My iPhone Disabled**).
@@ -242,7 +312,7 @@ sudo zypper install -y \
 3. If prompted on the device screen with **"Trust This Computer?"**, tap **Trust** and enter your passcode if applicable.
 4. Verify your Linux machine sees the device:
    ```bash
-   ./mdmpatcher.py info
+   mdmpatcher info
    ```
 
 ### Step 2: Run the Patcher
@@ -250,29 +320,29 @@ sudo zypper install -y \
 #### Standard One-Command Auto-Patch (iOS 9 – iOS 27+)
 Automatically detects your iOS version and selects `ios27` mode on iOS 27+ (builds `24A+`) or `enhanced` mode on iOS 9–26:
 ```bash
-./mdmpatcher.py patch
+mdmpatcher patch
 ```
 
 #### iOS 27 Vector A Only (Direct USB `MCInstall` + `lockdownd` SkipSetup — Zero Backup Restore)
 If you are on **iOS 27** on the Setup Assistant screen and want to bypass Remote Management & all 80 Setup Assistant panes **without running any backup restore**:
 ```bash
-./mdmpatcher.py skip-setup
+mdmpatcher skip-setup
 ```
 
 #### iOS 27 Vector B Full Protective G1 Route (Full Backup $\rightarrow$ MDM Strip & Donor Injection $\rightarrow$ Verified Restore)
 Takes a real unencrypted backup of your connected iOS 27 device, strips `MDM.plist` & `MDMEvents.plist`, injects donor-cloned payloads with unique inodes, passes the 6-point verification gate, restores with `--no-reboot`, runs Vector A, and restarts:
 ```bash
-./mdmpatcher.py patch --full-backup-g1
+mdmpatcher patch --full-backup-g1
 ```
 
 #### Also Block OTA Software Updates
 ```bash
-./mdmpatcher.py patch --block-ota
+mdmpatcher patch --block-ota
 ```
 
 #### Launch the Linux Desktop GUI (or Interactive Terminal UI)
 ```bash
-./mdmpatcher.py gui
+mdmpatcher gui
 ```
 
 ### Step 3: On-Device Step After Reboot (iOS 17.2, iOS 18, iOS 26 & iOS 27+)
@@ -290,10 +360,10 @@ You can generate, patch, deobfuscate, and inspect backups offline without a conn
 
 ```bash
 # 1. Deobfuscate MDMPatcher-Universal's encrypted assets (extension1.pdf, extension2.pdf, libiMobileeDevice.dylib)
-./mdmpatcher.py deobfuscate -a assets -o assets/deobfuscated
+mdmpatcher deobfuscate -a assets -o assets/deobfuscated
 
 # 2. Build an iOS 27 BackupAgent2-hardened backup offline
-./mdmpatcher.py build-backup \
+mdmpatcher build-backup \
   --output ./my_ios27_backup \
   --mode ios27 \
   --udid 00008130-0011223344556677 \
@@ -304,10 +374,10 @@ You can generate, patch, deobfuscate, and inspect backups offline without a conn
   --block-ota
 
 # 3. Strip MDM.plist/MDMEvents.plist and inject iOS 27 payloads into an existing Manifest.db backup
-./mdmpatcher.py patch-backup ./my_ios27_backup/MDMB --block-ota
+mdmpatcher patch-backup ./my_ios27_backup/MDMB --block-ota
 
 # 4. Inspect any backup directory (Manifest.mbdb or Manifest.db)
-./mdmpatcher.py inspect ./my_ios27_backup
+mdmpatcher inspect ./my_ios27_backup
 ```
 
 ---
@@ -331,7 +401,9 @@ mdmpatcher-linux/
 │   ├── device.py                    # Linux USB device detector & MobileBackup2 restore engine
 │   └── cli.py                       # CLI, Tkinter GUI & interactive TUI
 ├── scripts/
-│   ├── install.sh                   # Cross-distro installer (Fedora, Ubuntu/Debian, Arch, openSUSE)
+│   ├── install.sh                   # One-command installer: clones/updates from git `main`,
+│   │                                #   installs distro packages, udev rules, venv & the
+│   │                                #   `mdmpatcher` command (Fedora, Ubuntu, Arch, openSUSE)
 │   └── 39-usbmuxd-mdmpatcher.rules  # Apple USB udev rules for non-root Linux access
 ├── src/c/                           # Native C port (main.c, patch_logic.c, idevicebackup2.c, bad_query_ios27.c)
 └── tests/

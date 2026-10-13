@@ -16,6 +16,8 @@ Subcommands:
                     `libiMobileeDevice.dylib` into `clean_info.plist`,
                     `clean_manifest.plist`, and `clean_archive.zip`.
   - `inspect`:      Inspect a backup directory (`Manifest.mbdb` or `Manifest.db`).
+  - `update`:       Pull the latest code from the tracked git branch (default: `main`)
+                    and refresh the Python dependencies.
   - `gui`:          Launch the Linux Tkinter GUI (or interactive TUI if headless).
 """
 
@@ -24,6 +26,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import plistlib
+import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -546,9 +550,10 @@ def cmd_gui(_args: argparse.Namespace) -> int:
     print("  3) Direct USB Setup & CloudConfig Bypass (`skip-setup`, iOS 27 safe)")
     print("  4) Patch connected iOS 27 device (`full-backup-g1` protective route)")
     print("  5) Deobfuscate MDMPatcher-Universal assets (`deobfuscate`)")
+    print("  6) Update MDMPatcher-Linux from git (`update`)")
     print("  0) Exit")
     try:
-        choice = input("\nSelect an option [0-5]: ").strip()
+        choice = input("\nSelect an option [0-6]: ").strip()
     except EOFError:
         return 0
 
@@ -583,6 +588,115 @@ def cmd_gui(_args: argparse.Namespace) -> int:
                 output="assets/deobfuscated",
             )
         )
+    if choice == "6":
+        return cmd_update(argparse.Namespace(branch="", no_deps=False))
+    return 0
+
+
+UPDATE_HELP_URL = (
+    "https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh"
+)
+
+
+def _git(repo_root: Path) -> str | None:
+    """Return the path to `git` if it is available."""
+    return shutil.which("git")
+
+
+def _git_out(repo_root: Path, *args: str) -> str:
+    git = _git(repo_root)
+    if git is None:
+        return ""
+    proc = subprocess.run(
+        [git, "-C", str(repo_root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """
+    Self-update: fast-forward the installation to the latest code on the
+    tracked branch (default: `main`) and refresh Python dependencies.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    print(f"[*] MDMPatcher-Linux v{__version__} — self-update")
+    print(f"    Install directory: {repo_root}")
+
+    git = _git(repo_root)
+    if git is None:
+        print("[!] `git` was not found, so an in-place update is not possible.", file=sys.stderr)
+        print("    Re-run the one-line installer to re-download the tool:", file=sys.stderr)
+        print(f"      curl -fsSL {UPDATE_HELP_URL} | bash", file=sys.stderr)
+        return 1
+
+    if not (repo_root / ".git").exists():
+        print(
+            f"[!] {repo_root} is not a git checkout (it was installed from a tarball).",
+            file=sys.stderr,
+        )
+        print("    Re-run the installer to replace it with a git clone:", file=sys.stderr)
+        print(f"      curl -fsSL {UPDATE_HELP_URL} | bash", file=sys.stderr)
+        return 1
+
+    branch = args.branch or _git_out(repo_root, "rev-parse", "--abbrev-ref", "HEAD") or "main"
+    before = _git_out(repo_root, "rev-parse", "--short", "HEAD")
+
+    print(f"[*] Fetching origin/{branch} ...")
+    if subprocess.run(
+        [git, "-C", str(repo_root), "fetch", "--quiet", "origin", branch], check=False
+    ).returncode != 0:
+        print(
+            "[!] Could not reach the remote repository (offline?). Nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if subprocess.run(
+        [git, "-C", str(repo_root), "pull", "--ff-only", "origin", branch], check=False
+    ).returncode != 0:
+        print(
+            f"[!] Fast-forward update failed — {repo_root} has local modifications.",
+            file=sys.stderr,
+        )
+        print(
+            "    Review them with:  git -C "
+            f"{repo_root} status   (or re-install into a clean directory)",
+            file=sys.stderr,
+        )
+        return 1
+
+    after = _git_out(repo_root, "rev-parse", "--short", "HEAD")
+    if after and after == before:
+        print(f"[=] Already up to date with origin/{branch} ({after or 'unknown'}).")
+    else:
+        print(f"[+] Updated {before or '?'} -> {after or '?'} (origin/{branch}).")
+
+    if args.no_deps:
+        return 0
+
+    venv_python = repo_root / ".venv" / "bin" / "python3"
+    python = str(venv_python) if venv_python.exists() else sys.executable
+    print(f"[*] Refreshing Python dependencies with {python} ...")
+    install = [
+        python,
+        "-m",
+        "pip",
+        "install",
+        "-e",
+        f"{repo_root}[usb]",
+    ]
+    if subprocess.run(install, check=False).returncode != 0:
+        install.insert(2, "--break-system-packages")
+        if subprocess.run(install, check=False).returncode != 0:
+            print(
+                "[!] Python dependencies could not be refreshed (offline?). The update still applied.",
+                file=sys.stderr,
+            )
+            return 0
+    print("[+] Python dependencies up to date.")
     return 0
 
 
@@ -811,6 +925,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_insp.add_argument("path", help="Path to backup directory")
     p_insp.set_defaults(func=cmd_inspect)
+
+    # update (self-update from the tracked git branch, default: main)
+    p_upd = sub.add_parser(
+        "update",
+        help="Update this installation from the git remote (default branch: main)",
+    )
+    p_upd.add_argument(
+        "-b",
+        "--branch",
+        default="",
+        help="Branch to pull from (default: the branch currently checked out)",
+    )
+    p_upd.add_argument(
+        "--no-deps",
+        action="store_true",
+        help="Only pull the source code; do not refresh Python dependencies",
+    )
+    p_upd.set_defaults(func=cmd_update)
 
     # gui
     p_gui = sub.add_parser(

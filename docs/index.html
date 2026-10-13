@@ -343,10 +343,30 @@
 
     <section id="install">
       <span class="section-tag">Linux Installation</span>
-      <h2>Step-by-Step Installation (Fedora, Ubuntu/Debian, Arch, openSUSE)</h2>
+      <h2>One-Command Installation (Fedora, Ubuntu/Debian, Arch, openSUSE)</h2>
       <p class="lead">
-        Select your Linux distribution below, or run the unified <code>./scripts/install.sh</code> installer which
-        automatically configures packages, <code>usbmuxd</code>, and Apple USB <code>udev</code> rules.
+        Run a single command — the installer clones MDMPatcher-Linux straight from the <code>main</code>
+        branch, configures distro packages, <code>usbmuxd</code>, Apple USB <code>udev</code> rules, a
+        Python virtual environment, and puts a <code>mdmpatcher</code> command on your PATH. No manual
+        file copying, no <code>cd</code>, no <code>source .venv/bin/activate</code>.
+      </p>
+
+      <div class="card">
+        <h3>⚡ Quick Install (recommended — works on every supported distro)</h3>
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh | bash
+
+# ...then, from any directory:
+mdmpatcher patch          # auto-patches iOS 9 – iOS 27+
+mdmpatcher info           # verify the connected iPhone / iPad
+mdmpatcher gui            # desktop GUI / interactive menu
+mdmpatcher update         # pull the latest code from `main`</code></pre>
+        <p style="margin-top:0.75rem">
+          Want a custom location or branch? <code>curl -fsSL .../main/scripts/install.sh | bash -s -- --dir ~/tools/mdmpatcher</code>
+        </p>
+      </div>
+
+      <p class="lead" style="margin-top:1.5rem">
+        Prefer to install per-distribution (or already cloned the repo)? Pick your distro below.
       </p>
 
       <div class="tabs">
@@ -360,12 +380,11 @@
         <div class="card">
           <h3>Fedora Linux 39 / 40 / 41 / 42 / 43+ Installation</h3>
           <p>Works out-of-the-box on Fedora Workstation, Fedora KDE Plasma, Nobara, Ultramarine, RHEL/Alma/Rocky, and Fedora Silverblue/Kinoite:</p>
-          <pre><code># 1. Clone the repository
-git clone https://github.com/supermario3D1/mdmpatcher-linux.git
-cd mdmpatcher-linux
+          <pre><code># Option A: One command (clones `main`, installs dnf packages, udev rules, usbmuxd, venv &amp; the `mdmpatcher` command)
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh | bash
 
-# 2. Option A: One-command automated Fedora setup (installs dnf packages, udev rules, usbmuxd &amp; C binary)
-./scripts/install.sh --venv
+# Option B: Already cloned the repository
+./scripts/install.sh
 
 # 2. Option B: Manual Fedora dnf installation
 sudo dnf install -y usbmuxd libimobiledevice libimobiledevice-utils libplist \
@@ -379,7 +398,7 @@ sudo udevadm control --reload-rules &amp;&amp; sudo udevadm trigger
 sudo systemctl start usbmuxd.service
 
 # Optional: Install pymobiledevice3 for iOS 27 Direct MCInstall support
-python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+# (the installer already does this inside .venv and wires up the `mdmpatcher` command)
 pip install -e ".[usb]"</code></pre>
         </div>
       </div>
@@ -387,11 +406,10 @@ pip install -e ".[usb]"</code></pre>
       <div id="tab-ubuntu" class="tab-panel">
         <div class="card">
           <h3>Ubuntu / Debian / Linux Mint / Pop!_OS / Kali Installation</h3>
-          <pre><code>git clone https://github.com/supermario3D1/mdmpatcher-linux.git
-cd mdmpatcher-linux
+          <pre><code># Automated setup (one command, clones `main` and installs everything):
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh | bash
 
-# Automated setup:
-./scripts/install.sh --venv
+# Or, if you cloned the repo yourself: ./scripts/install.sh
 
 # Or manual apt installation:
 sudo apt update
@@ -404,11 +422,10 @@ sudo apt install -y usbmuxd libimobiledevice6 libimobiledevice-utils ideviceinst
       <div id="tab-arch" class="tab-panel">
         <div class="card">
           <h3>Arch Linux / Manjaro / EndeavourOS / CachyOS Installation</h3>
-          <pre><code>git clone https://github.com/supermario3D1/mdmpatcher-linux.git
-cd mdmpatcher-linux
+          <pre><code># Automated setup (one command, clones `main` and installs everything):
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh | bash
 
-# Automated setup:
-./scripts/install.sh --venv
+# Or, if you cloned the repo yourself: ./scripts/install.sh
 
 # Or manual pacman installation:
 sudo pacman -Sy --needed usbmuxd libimobiledevice libplist openssl libzip readline python python-pip tk base-devel pkgconf</code></pre>
@@ -418,10 +435,10 @@ sudo pacman -Sy --needed usbmuxd libimobiledevice libplist openssl libzip readli
       <div id="tab-opensuse" class="tab-panel">
         <div class="card">
           <h3>openSUSE Tumbleweed / Leap Installation</h3>
-          <pre><code>git clone https://github.com/supermario3D1/mdmpatcher-linux.git
-cd mdmpatcher-linux
+          <pre><code># Automated setup (one command, clones `main` and installs everything):
+curl -fsSL https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh | bash
 
-./scripts/install.sh --venv</code></pre>
+# Or, if you cloned the repo yourself: ./scripts/install.sh</code></pre>
         </div>
       </div>
     </section>
@@ -492,22 +509,22 @@ cd mdmpatcher-linux
       <span class="section-tag">CLI &amp; GUI Reference</span>
       <h2>Quick Start &amp; Command Reference</h2>
       <pre><code># 1. Verify USB connection and check iOS version / Find My status
-./mdmpatcher.py info
+mdmpatcher info
 
 # 2. One-command auto-detect &amp; patch (auto-selects 'ios27' engine on iOS 27+ or 'enhanced' on iOS 9-26)
-./mdmpatcher.py patch
+mdmpatcher patch
 
 # 3. iOS 27 Vector A Only: Direct USB MCInstall CloudConfiguration &amp; Setup Assistant Skip (No Restore)
-./mdmpatcher.py skip-setup
+mdmpatcher skip-setup
 
 # 4. iOS 27 Vector B Full Protective Pipeline (Full Device Backup -> MDM Purge &amp; Donor Injection -> Verified Restore)
-./mdmpatcher.py patch --full-backup-g1
+mdmpatcher patch --full-backup-g1
 
 # 5. Patch an existing Backup v3.3+ (Manifest.db) directory offline
-./mdmpatcher.py patch-backup ./my_device_backup --block-ota
+mdmpatcher patch-backup ./my_device_backup --block-ota
 
 # 6. Launch the Linux Desktop GUI (Tkinter) or Interactive Terminal UI
-./mdmpatcher.py gui</code></pre>
+mdmpatcher gui</code></pre>
     </section>
   </main>
 
