@@ -135,7 +135,7 @@ The `./scripts/install.sh` script automatically:
 
 | Option | Description |
 | :--- | :--- |
-| `--dir DIR` | Install directory (default: `~/mdmpatcher-linux`, or the current checkout) |
+| `--dir DIR` | Install directory (default: `~/mdmpatcher-linux`, `/opt/mdmpatcher-linux` as root, or the current checkout) |
 | `--branch BRANCH` | Git branch to clone/track (default: `main`) |
 | `--repo URL` | Git repository URL (default: the official GitHub repo) |
 | `--venv` / `--no-venv` | Create a `.venv` with `pymobiledevice3` (default: `--venv`) or use system Python |

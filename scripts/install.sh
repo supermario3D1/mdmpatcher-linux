@@ -79,7 +79,8 @@ USAGE:
 
 OPTIONS:
   --dir DIR          Directory to install into (default: $HOME/mdmpatcher-linux,
-                     or the current checkout when run in place)
+                     /opt/mdmpatcher-linux when run as root, or the current
+                     checkout when run in place)
   --branch BRANCH    Git branch to clone/track (default: main)
   --repo URL         Git repository URL (default: official GitHub repo)
   --venv             Create a .venv with pymobiledevice3 (default: enabled)
@@ -141,10 +142,20 @@ fi
 if [[ -z "$INSTALL_DIR" ]]; then
     if [[ -n "$LOCAL_REPO" ]]; then
         INSTALL_DIR="$LOCAL_REPO"
+    elif [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        # Running as root: install system-wide so every user gets the command.
+        INSTALL_DIR="/opt/mdmpatcher-linux"
     else
         INSTALL_DIR="${HOME:-/root}/mdmpatcher-linux"
     fi
 fi
+
+# Always work with an absolute path (relative paths would break the launcher).
+case "$INSTALL_DIR" in
+    /*) ;;
+    *) INSTALL_DIR="$PWD/$INSTALL_DIR" ;;
+esac
+INSTALL_DIR="${INSTALL_DIR%/}"
 
 SUDO=""
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
@@ -200,11 +211,32 @@ do_uninstall() {
 # ===========================================================================
 # Bootstrap: clone from `main` (only when we are NOT inside a checkout)
 # ===========================================================================
+github_slug() {
+    # Derive "owner/repo" from the configured repo URL (empty for non-GitHub URLs).
+    local slug=""
+    case "$REPO_URL" in
+        https://github.com/*)   slug="${REPO_URL#https://github.com/}" ;;
+        http://github.com/*)    slug="${REPO_URL#http://github.com/}" ;;
+        git@github.com:*)       slug="${REPO_URL#git@github.com:}" ;;
+    esac
+    slug="${slug%.git}"
+    slug="${slug%/}"
+    case "$slug" in
+        */*) echo "$slug" ;;
+        *)   echo "" ;;
+    esac
+}
+
 download_tarball() {
-    local dest="$1" url
-    url="https://codeload.github.com/supermario3D1/mdmpatcher-linux/tar.gz/refs/heads/${BRANCH}"
+    local dest="$1" slug url
+    slug="$(github_slug)"
+    if [[ -z "$slug" ]]; then
+        warn "Tarball fallback is only available for GitHub repositories."
+        return 1
+    fi
+    url="https://codeload.github.com/${slug}/tar.gz/refs/heads/${BRANCH}"
     mkdir -p "$dest"
-    info "Downloading ${BRANCH} tarball from GitHub..."
+    info "Downloading the ${BRANCH} tarball from GitHub..."
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "$url" | tar -xz --strip-components=1 -C "$dest"
     elif command -v wget >/dev/null 2>&1; then
@@ -473,13 +505,17 @@ fi
 # 3) Python environment (virtualenv by default — handled by the launcher)
 # ---------------------------------------------------------------------------
 python_install_deps() {
-    local py="$1"
+    local py="$1" target="${REPO_ROOT}"
+    # Only request the `usb` extra when this checkout actually defines it.
+    if grep -Eq '^usb[[:space:]]*=' "${REPO_ROOT}/pyproject.toml" 2>/dev/null; then
+        target="${REPO_ROOT}[usb]"
+    fi
     "$py" -m pip install --upgrade pip >/dev/null 2>&1 || true
-    if "$py" -m pip install -e "${REPO_ROOT}[usb]"; then
+    if "$py" -m pip install -e "${target}"; then
         return 0
     fi
     warn "Standard pip install failed; retrying with --break-system-packages..."
-    if "$py" -m pip install --break-system-packages -e "${REPO_ROOT}[usb]"; then
+    if "$py" -m pip install --break-system-packages -e "${target}"; then
         return 0
     fi
     warn "Retrying with --user (pymobiledevice3 for iOS 27 may be unavailable)..."

@@ -679,6 +679,14 @@ def cmd_update(args: argparse.Namespace) -> int:
 
     venv_python = repo_root / ".venv" / "bin" / "python3"
     python = str(venv_python) if venv_python.exists() else sys.executable
+    # Only request the optional `usb` extra when this checkout defines one.
+    extra = "[usb]"
+    try:
+        pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8", errors="ignore")
+        if not any(line.strip().startswith("usb") for line in pyproject.splitlines()):
+            extra = ""
+    except OSError:
+        extra = ""
     print(f"[*] Refreshing Python dependencies with {python} ...")
     install = [
         python,
@@ -686,7 +694,7 @@ def cmd_update(args: argparse.Namespace) -> int:
         "pip",
         "install",
         "-e",
-        f"{repo_root}[usb]",
+        f"{repo_root}{extra}",
     ]
     if subprocess.run(install, check=False).returncode != 0:
         install.insert(2, "--break-system-packages")
