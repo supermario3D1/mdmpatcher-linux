@@ -1,4 +1,4 @@
-name: CI — Linux Matrix (Ubuntu & Fedora)
+name: CI — Linux Matrix (Ubuntu & Fedora) + One-Command Installer
 
 on:
   push:
@@ -41,3 +41,22 @@ jobs:
       - name: Run Unit & Integration Tests on Fedora
         run: |
           python3 -m unittest discover -s tests -v
+
+  test-installer:
+    name: One-Command Installer (curl | bash bootstrap)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the one-line installer from the current branch
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/scripts/install.sh" \
+            | bash -s -- --dir "$HOME/mdmpatcher-ci" --branch "${GITHUB_REF_NAME}"
+      - name: Verify the `mdmpatcher` command installed on PATH
+        run: |
+          export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+          command -v mdmpatcher
+          mdmpatcher --version
+          mdmpatcher deobfuscate -a "$HOME/mdmpatcher-ci/assets" -o /tmp/deob_ci
+      - name: Verify `mdmpatcher update` reports an up-to-date checkout
+        run: |
+          "$HOME/mdmpatcher-ci/.venv/bin/python3" "$HOME/mdmpatcher-ci/mdmpatcher.py" update --no-deps

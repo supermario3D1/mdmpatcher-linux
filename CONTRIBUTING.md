@@ -11,12 +11,15 @@ Thank you for your interest in contributing to **MDMPatcher-Linux**!
    ```
 2. Install system packages (Fedora, Ubuntu/Debian, Arch, or openSUSE):
    ```bash
-   ./scripts/install.sh --venv
+   ./scripts/install.sh            # also works as: curl -fsSL .../main/scripts/install.sh | bash
    ```
 3. Run the automated test suite:
    ```bash
    make test
    ```
+
+> The installer creates a `.venv` and a `mdmpatcher` launcher on your PATH by default.
+> Use `--no-venv` to run against the system Python instead.
 
 ## Pre-Restore Safety Requirements (iOS 27+)
 
