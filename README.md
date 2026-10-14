@@ -345,12 +345,85 @@ mdmpatcher patch --block-ota
 mdmpatcher gui
 ```
 
+#### Validate First, Patch Second (Recommended)
+```bash
+mdmpatcher preflight                 # host + device checks
+mdmpatcher patch --dry-run           # build + verify the backup without restoring
+```
+
 ### Step 3: On-Device Step After Reboot (iOS 17.2, iOS 18, iOS 26 & iOS 27+)
 > **IMPORTANT (`iOS 17.2 – iOS 27+`)**:
 > After the device reboots, Apple's Setup Assistant may show a screen titled **"iPhone Partially Set Up"**.
 > - Tap **"Continue with Partial Setup"** (the smaller text button at the bottom of the screen).
 > - **DO NOT** tap the blue *"Finish Setting Up"* button (which would re-enter the Wi-Fi / Remote Management flow).
 > - Your device will immediately transition to the iOS Home Screen with Remote Management bypassed.
+
+---
+
+## Safety: Pre-Flight Verification & Restore Diagnostics
+
+A partial-backup restore writes straight into iOS system domains. If the synthetic backup is
+malformed — a missing payload, a `Manifest.db` row with no file on disk, a duplicate inode, an
+encrypted manifest — iOS can silently drop the injected files or enter **safe-state recovery**
+(Setup Assistant loops or a forced factory reset). MDMPatcher-Linux therefore audits every backup
+**before a single byte is sent to the device**.
+
+### Verify before you patch
+
+```bash
+mdmpatcher preflight                       # host (usbmuxd, udev, USB backends) + connected device
+mdmpatcher preflight --backup ./out         # read-only audit of a generated backup directory
+mdmpatcher preflight --backup ./out --deep  # also re-verify payload SHA-1 hashes
+mdmpatcher preflight --backup ./out --json  # machine-readable (CI / scripting)
+```
+
+Exit code `0` = ready, `1` = blocking problem found (each failure prints a one-line fix).
+
+What the backup audit checks:
+
+| Check | Why it matters |
+| :--- | :--- |
+| `Info.plist` / `Manifest.plist` / `Status.plist` parse | iOS rejects a backup it cannot read |
+| `IsEncrypted` is False | plaintext injection is required |
+| `SnapshotState == "finished"` | an unfinished snapshot is treated as corrupt |
+| `Manifest.mbdb` / `Manifest.db` parses | a malformed manifest aborts the restore immediately |
+| Every file record has a payload of the right size | dangling rows make `BackupAgent2` abort mid-restore |
+| No zero-byte payloads | empty plists are ignored by iOS |
+| No `MDM.plist` / `MDMEvents.plist` left behind | these would re-apply the MDM payload on restore |
+| Required `CloudConfigurationDetails` / `purplebuddy` payloads present & parseable | without them nothing is cleared |
+| Inode uniqueness (`Manifest.db`: positive & unique) | iOS 27 de-duplicates by inode |
+| The iOS 27 6-point gate (sqlite/`ios27` modes) | integrity, digests, parent dir chains, MDM strip |
+
+### The gate runs automatically
+
+`mdmpatcher patch` runs the same checks after building the backup and **refuses to restore** on any
+hard failure:
+
+```bash
+mdmpatcher patch --dry-run   # build + verify, then stop — exits 1 if the backup is not safe
+mdmpatcher patch             # verifies, then restores (aborts on failure)
+mdmpatcher patch --force     # override the gate (NOT recommended)
+```
+
+### When a restore still fails
+
+A non-zero exit is now matched against known failure signatures so you get a cause and a fix
+instead of a bare exit code:
+
+```text
+[!] Restore exited with code 1.
+    Most likely cause(s):
+      - Find My iPhone / Activation Lock is blocking the restore: Disable Find My iPhone ...
+      - Host cannot see the device: Start usbmuxd (sudo systemctl start usbmuxd.service) ...
+```
+
+Recognised causes: Find My / Activation Lock, USB permission denied, `usbmuxd` not running,
+untrusted device, encrypted backup, missing `EscrowBag`, Lockdown SSL/timeout, safe-state recovery,
+`BackupAgent2` rejection, out of space, and truncated backups.
+
+> **Honest limit:** no tool can remove a genuine DEP / Apple Business Manager enrollment. After any
+> erase or restore the MDM returns until the organisation releases the serial number in
+> Apple Business Manager — check that before assuming the restore failed.
 
 ---
 
@@ -399,6 +472,7 @@ mdmpatcher-linux/
 │   ├── ios27.py                     # iOS 27 Dual-Vector Engine (MCInstall + G1 Donor-Cloned Pipeline + 6-Point Gate)
 │   ├── patcher.py                   # Unified backup builder (enhanced, ios27, modern, sqlite, legacy)
 │   ├── device.py                    # Linux USB device detector & MobileBackup2 restore engine
+│   ├── preflight.py                 # Pre-restore safety gate: host/device checks, backup audit & failure diagnostics
 │   └── cli.py                       # CLI, Tkinter GUI & interactive TUI
 ├── scripts/
 │   ├── install.sh                   # One-command installer: clones/updates from git `main`,
@@ -407,7 +481,7 @@ mdmpatcher-linux/
 │   └── 39-usbmuxd-mdmpatcher.rules  # Apple USB udev rules for non-root Linux access
 ├── src/c/                           # Native C port (main.c, patch_logic.c, idevicebackup2.c, bad_query_ios27.c)
 └── tests/
-    └── test_mdmpatcher.py           # Unit & integration test suite
+    └── test_mdmpatcher.py           # Unit & integration test suite (incl. pre-flight safety gate)
 ```
 
 ---

@@ -43,6 +43,12 @@ from mdmpatcher.patcher import (
     build_backup,
     default_assets_dir,
 )
+from mdmpatcher.preflight import (
+    PreflightReport,
+    check_device,
+    classify_restore_failure,
+    verify_backup,
+)
 from mdmpatcher.profiles import (
     HOME_DOMAIN,
     MANAGED_PREFS_DOMAIN,
@@ -307,6 +313,218 @@ class TestMDMPatcherLinux(unittest.TestCase):
 
             rc4 = cli_main(["inspect", str(bkp_out)])
             self.assertEqual(rc4, 0)
+
+
+class TestPreflightSafety(unittest.TestCase):
+    """
+    Safety-gate tests: the pre-restore audit must PASS on every freshly built
+    backup mode, and must FAIL (never silently pass) on each corruption that is
+    known to make iOS drop files or enter safe-state recovery.
+    """
+
+    MODES = ("enhanced", "ios27", "modern", "sqlite", "legacy")
+
+    def _build(self, root: Path, mode: str) -> Path:
+        device = DeviceIdentity(
+            udid="00008130-0011223344556677",
+            serial_number="G6TZ1234ABCD",
+            product_type="iPhone17,2",
+            build_version="24A335",
+            product_version="27.0",
+            device_name="iPhone",
+        )
+        return build_backup(
+            root,
+            device,
+            PatchConfig(mode=mode),  # type: ignore[arg-type]
+        )
+
+    def test_verify_backup_passes_for_every_mode(self) -> None:
+        for mode in self.MODES:
+            with tempfile.TemporaryDirectory() as tmp:
+                backup_dir = self._build(Path(tmp), mode)
+                report = verify_backup(backup_dir, mode)  # type: ignore[arg-type]
+                self.assertTrue(
+                    report.ok,
+                    f"mode={mode} should verify clean: "
+                    f"{[ (c.name, c.detail) for c in report.failures ]}",
+                )
+
+    def test_verify_backup_missing_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            report = verify_backup(Path(tmp) / "does-not-exist", "enhanced")
+            self.assertFalse(report.ok)
+            self.assertIn("Backup directory", [c.name for c in report.failures])
+
+    def test_verify_backup_detects_missing_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_dir = self._build(Path(tmp), "enhanced")
+            payload = next(
+                p
+                for p in backup_dir.iterdir()
+                if p.is_file() and p.name not in ("Info.plist", "Manifest.plist", "Status.plist", "Manifest.mbdb")
+            )
+            payload.unlink()
+            report = verify_backup(backup_dir, "enhanced")
+            self.assertFalse(report.ok)
+            self.assertIn("Payload files present", [c.name for c in report.failures])
+
+    def test_verify_backup_detects_zero_byte_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_dir = self._build(Path(tmp), "enhanced")
+            payload = next(
+                p
+                for p in backup_dir.iterdir()
+                if p.is_file() and p.name not in ("Info.plist", "Manifest.plist", "Status.plist", "Manifest.mbdb")
+            )
+            payload.write_bytes(b"")
+            report = verify_backup(backup_dir, "enhanced")
+            self.assertFalse(report.ok)
+            names = [c.name for c in report.failures]
+            self.assertTrue(any("Payload" in n for n in names))
+
+    def test_verify_backup_detects_encrypted_manifest(self) -> None:
+        for mode in ("enhanced", "ios27"):
+            with tempfile.TemporaryDirectory() as tmp:
+                backup_dir = self._build(Path(tmp), mode)
+                mp_path = backup_dir / "Manifest.plist"
+                data = plistlib.loads(mp_path.read_bytes())
+                data["IsEncrypted"] = True
+                mp_path.write_bytes(plistlib.dumps(data))
+                report = verify_backup(backup_dir, mode)  # type: ignore[arg-type]
+                self.assertFalse(report.ok, f"mode={mode}: encrypted backup must fail")
+                self.assertIn(
+                    "Backup encryption", [c.name for c in report.failures]
+                )
+
+    def test_verify_backup_detects_leftover_mdm_lock_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_dir = self._build(Path(tmp), "modern")
+            mbdb = Mbdb.from_bytes((backup_dir / "Manifest.mbdb").read_bytes())
+            blob = plistlib.dumps({"PayloadType": "com.apple.mdm"})
+            rec = mbdb.upsert_file(
+                SYS_CONFIG_PROFILE_DOMAIN,
+                "Library/ConfigurationProfiles/MDM.plist",
+                blob,
+                mode=MODE_FILE | 0o644,
+            )
+            (backup_dir / rec.file_id).write_bytes(blob)
+            (backup_dir / "Manifest.mbdb").write_bytes(mbdb.to_bytes())
+
+            report = verify_backup(backup_dir, "modern")
+            self.assertFalse(report.ok)
+            self.assertIn(
+                "No MDM lock files left in backup", [c.name for c in report.failures]
+            )
+
+    def test_verify_backup_sqlite_requires_status_plist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_dir = self._build(Path(tmp), "sqlite")
+            (backup_dir / "Status.plist").unlink()
+            report = verify_backup(backup_dir, "sqlite")
+            self.assertFalse(report.ok)
+            self.assertIn("Status.plist", [c.name for c in report.failures])
+
+    def test_deep_verification_hashes_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_dir = self._build(Path(tmp), "enhanced")
+            report = verify_backup(backup_dir, "enhanced", deep=True)
+            self.assertTrue(
+                report.ok,
+                f"deep verify should pass on a clean backup: "
+                f"{[(c.name, c.detail) for c in report.failures]}",
+            )
+
+    def test_check_device_find_my_states(self) -> None:
+        device = DeviceIdentity()
+        self.assertTrue(
+            any(
+                c.name == "Find My iPhone" and c.status == "fail"
+                for c in check_device(device, find_my=True)
+            )
+        )
+        self.assertTrue(
+            any(
+                c.name == "Find My iPhone" and c.status == "warn"
+                for c in check_device(device, find_my=None)
+            )
+        )
+        self.assertTrue(
+            any(
+                c.name == "Find My iPhone" and c.status == "pass"
+                for c in check_device(device, find_my=False)
+            )
+        )
+
+    def test_check_device_warns_on_mode_mismatch(self) -> None:
+        device = DeviceIdentity(product_version="27.0", build_version="24A335")
+        self.assertTrue(
+            any(
+                c.status == "warn"
+                for c in check_device(device, mode="legacy", ios27=True)
+            )
+        )
+
+    def test_classify_restore_failure_known_signatures(self) -> None:
+        self.assertTrue(
+            any(
+                "Find My" in hint
+                for hint in classify_restore_failure(1, "ERROR: Find My iPhone is enabled")
+            )
+        )
+        self.assertTrue(
+            any(
+                "usbmuxd" in hint.lower()
+                for hint in classify_restore_failure(1, "No device found, is usbmuxd running?")
+            )
+        )
+        self.assertTrue(
+            any(
+                "Trust" in hint
+                for hint in classify_restore_failure(1, "Device is not trusted")
+            )
+        )
+        self.assertTrue(
+            any(
+                "preflight" in hint
+                for hint in classify_restore_failure(1, "BackupAgent2 invalid backup")
+            )
+        )
+        # rc == 0 means success: no hints at all.
+        self.assertEqual(classify_restore_failure(0, ""), [])
+        # Unknown failures still return a generic, actionable hint.
+        generic = classify_restore_failure(255, "something went wrong")
+        self.assertEqual(len(generic), 1)
+        self.assertIn("preflight", generic[0])
+
+    def test_report_semantics(self) -> None:
+        report = PreflightReport()
+        self.assertTrue(report.ok)  # empty report blocks nothing
+        report.add("warning only", "warn", "meh")
+        self.assertTrue(report.ok)
+        report.add("hard failure", "fail", "boom")
+        self.assertFalse(report.ok)
+        self.assertEqual(len(report.failures), 1)
+        self.assertEqual(report.to_dict()["counts"]["warn"], 1)
+
+    def test_cli_preflight_subcommand_exit_codes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_dir = self._build(Path(tmp), "enhanced")
+            self.assertEqual(
+                cli_main(["preflight", "-b", str(backup_dir), "-m", "enhanced"]), 0
+            )
+            # Corrupt it and confirm the CLI reports a blocking failure.
+            payload = next(
+                p
+                for p in backup_dir.iterdir()
+                if p.is_file()
+                and p.name
+                not in ("Info.plist", "Manifest.plist", "Status.plist", "Manifest.mbdb")
+            )
+            payload.unlink()
+            self.assertEqual(
+                cli_main(["preflight", "-b", str(backup_dir), "-m", "enhanced"]), 1
+            )
 
 
 if __name__ == "__main__":

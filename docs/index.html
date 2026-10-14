@@ -275,6 +275,7 @@
       <nav class="nav-links">
         <a href="#ios27">iOS 27 Architecture</a>
         <a href="#install">Fedora &amp; Linux Install</a>
+        <a href="#safety">Safety &amp; Pre-Flight</a>
         <a href="#compatibility">iOS 9–27 Matrix</a>
         <a href="#usage">CLI &amp; GUI Guide</a>
         <a href="REVERSE_ENGINEERING.html">Reverse Engineering</a>
@@ -525,6 +526,67 @@ mdmpatcher patch-backup ./my_device_backup --block-ota
 
 # 6. Launch the Linux Desktop GUI (Tkinter) or Interactive Terminal UI
 mdmpatcher gui</code></pre>
+    </section>
+
+    <section id="safety">
+      <span class="section-tag">Fail-Safe Restores</span>
+      <h2>Pre-Flight Verification &amp; Restore Diagnostics</h2>
+      <p class="lead">
+        A partial-backup restore writes straight into iOS system domains. If the backup is malformed
+        — a missing payload, a dangling <code>Manifest.db</code> row, a duplicate inode, an encrypted
+        manifest — iOS can drop the injected files or enter <strong>safe-state recovery</strong>
+        (Setup Assistant loops or a forced factory reset). MDMPatcher-Linux audits every backup
+        <strong>before a single byte reaches the device</strong>.
+      </p>
+
+      <div class="card">
+        <h3>🛡️ Verify before you patch</h3>
+        <pre><code>mdmpatcher preflight                      # host (usbmuxd, udev, USB backends) + connected device
+mdmpatcher preflight --backup ./out        # read-only audit of a generated backup directory
+mdmpatcher preflight --backup ./out --deep # also re-verify payload SHA-1 hashes
+mdmpatcher preflight --backup ./out --json # machine-readable output
+
+# Exit code 0 = ready, 1 = blocking problem (each failure prints a one-line fix)</code></pre>
+        <p style="margin-top:0.75rem">
+          The same gate runs automatically inside <code>mdmpatcher patch</code>: it verifies the
+          freshly built backup and <strong>refuses to restore</strong> on a hard failure.
+          <code>--dry-run</code> builds + verifies and stops; <code>--force</code> overrides
+          (not recommended).
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>🔍 What gets checked</h3>
+        <ul>
+          <li><code>Info.plist</code> / <code>Manifest.plist</code> / <code>Status.plist</code> parse, and <code>IsEncrypted</code> is False</li>
+          <li><code>SnapshotState == "finished"</code> (an unfinished snapshot is treated as corrupt)</li>
+          <li><code>Manifest.mbdb</code> / <code>Manifest.db</code> parses, every file record has a payload of the right size</li>
+          <li>No zero-byte payloads, and no <code>MDM.plist</code> / <code>MDMEvents.plist</code> left behind</li>
+          <li>Required <code>CloudConfigurationDetails</code> / <code>purplebuddy</code> payloads exist and parse</li>
+          <li>Inode uniqueness (and the iOS 27 6-point gate for <code>sqlite</code> / <code>ios27</code> modes)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>🧭 Actionable failure output</h3>
+        <p>A non-zero restore exit code is matched against known signatures, so you get a cause and a fix:</p>
+        <pre><code>[!] Restore exited with code 1.
+    Most likely cause(s):
+      - Find My iPhone / Activation Lock is blocking the restore: Disable Find My iPhone ...
+      - Host cannot see the device: Start usbmuxd (sudo systemctl start usbmuxd.service) ...</code></pre>
+        <p style="margin-top:0.75rem">
+          Recognised causes: Find My / Activation Lock, USB permission denied, <code>usbmuxd</code>
+          not running, untrusted device, encrypted backup, missing <code>EscrowBag</code>, Lockdown
+          SSL/timeout, safe-state recovery, <code>BackupAgent2</code> rejection, out of space,
+          truncated backups.
+        </p>
+      </div>
+
+      <p class="lead" style="margin-top:1.5rem">
+        <strong>Honest limit:</strong> no tool can remove a genuine DEP / Apple Business Manager
+        enrollment. After any erase or restore the MDM returns until the organisation releases the
+        serial number in Apple Business Manager — check that before assuming the restore failed.
+      </p>
     </section>
   </main>
 

@@ -27,6 +27,9 @@ jobs:
         run: |
           ./mdmpatcher.py --version
           ./mdmpatcher.py deobfuscate -a assets -o /tmp/deob_check
+          ./mdmpatcher.py build-backup -o /tmp/ci_backup -m ios27 -i 27.0 -b 24A335
+          ./mdmpatcher.py preflight -b /tmp/ci_backup -m ios27
+          ./mdmpatcher.py preflight -b /tmp/ci_backup -m ios27 --json
 
   test-fedora:
     name: Python & Installer Check (Fedora Container)
