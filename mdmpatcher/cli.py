@@ -16,7 +16,14 @@ Subcommands:
                     `libiMobileeDevice.dylib` into `clean_info.plist`,
                     `clean_manifest.plist`, and `clean_archive.zip`.
   - `inspect`:      Inspect a backup directory (`Manifest.mbdb` or `Manifest.db`).
+  - `preflight`:    Validate the Linux host, the connected device, and/or a generated
+                    backup directory. Nothing is written to the device.
+  - `update`:       Pull the latest code from the tracked git branch (default: `main`)
+                    and refresh the Python dependencies.
   - `gui`:          Launch the Linux Tkinter GUI (or interactive TUI if headless).
+
+Safety: `patch` runs the same read-only verification gate as `preflight` and
+refuses to restore on a hard failure unless `--force` is passed.
 """
 
 from __future__ import annotations
@@ -24,6 +31,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import plistlib
+import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -47,6 +56,13 @@ from .ios27 import (
 )
 from .manifest_db import read_manifest_db
 from .mbdb import Mbdb
+from .preflight import (
+    PreflightReport,
+    check_device,
+    check_host_environment,
+    classify_restore_failure,
+    verify_backup,
+)
 from .patcher import (
     DeviceIdentity,
     PatchConfig,
@@ -207,6 +223,74 @@ def cmd_patch_backup(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """
+    Read-only safety audit: host environment, connected device, and (optionally)
+    an already-generated backup directory. Touches nothing on the device.
+    """
+    # Scope: with no flags we audit host + device. `--backup` alone audits only
+    # the backup, so verifying a generated backup stays fast and focused.
+    scopes: set[str] = set()
+    if args.host:
+        scopes.add("host")
+    if args.device:
+        scopes.add("device")
+    if args.backup:
+        scopes.add("backup")
+    if not scopes:
+        scopes = {"host", "device"}
+
+    report = PreflightReport(title="MDMPatcher-Linux pre-flight")
+
+    if "host" in scopes:
+        report.extend(check_host_environment())
+
+    if "device" in scopes:
+        try:
+            device = detect_connected_device(args.udid)
+        except DeviceCommunicationError as exc:
+            report.add(
+                "Connected device",
+                "warn",
+                "no device detected",
+                str(exc).splitlines()[0] if str(exc) else "",
+            )
+        else:
+            report.add(
+                "Connected device", "pass", f"{device.device_name} ({device.udid})"
+            )
+            ios27 = is_ios27_or_newer(device.product_version, device.build_version)
+            report.extend(
+                check_device(
+                    device,
+                    find_my=check_find_my_enabled(device.udid),
+                    mode=args.mode,
+                    ios27=ios27,
+                )
+            )
+
+    if "backup" in scopes:
+        report.extend(verify_backup(args.backup, args.mode, deep=args.deep).checks)
+
+    if args.json:
+        import json as _json
+
+        print(_json.dumps(report.to_dict(), indent=2))
+    else:
+        report.print(verbose=args.verbose)
+
+    if not report.ok:
+        print(
+            "\n[!] Pre-flight found blocking problem(s). Fix them before restoring:",
+            file=sys.stderr,
+        )
+        for check in report.failures:
+            print(f"    - {check.name}: {check.detail}", file=sys.stderr)
+        return 1
+    print("\n[+] Pre-flight passed. Safe to run `mdmpatcher patch`.")
+    return 0
+
+
 def cmd_patch(args: argparse.Namespace) -> int:
     print("=================================================================")
     print(
@@ -247,6 +331,34 @@ def cmd_patch(args: argparse.Namespace) -> int:
         )
         return 1
 
+    force = bool(getattr(args, "force", False))
+
+    # ---- Pre-restore safety gate #1: device state (read-only) --------------
+    gate = PreflightReport(title="Pre-restore safety gate (device)")
+    gate.extend(
+        check_device(
+            device,
+            find_my=(False if (fmi and args.ignore_find_my) else fmi),
+            mode=selected_mode,
+            ios27=is_27,
+        )
+    )
+    gate.print(verbose=False)
+    if fmi and args.ignore_find_my:
+        print("[!] --ignore-find-my: Find My check overridden by user request.")
+    if not gate.ok and not force:
+        print(
+            "\n[!] ABORTING BEFORE RESTORE — device pre-flight failed:",
+            file=sys.stderr,
+        )
+        for check in gate.failures:
+            print(f"    - {check.name}: {check.detail}", file=sys.stderr)
+        print(
+            "    Fix the problem(s) above, or pass --force to override (not recommended).",
+            file=sys.stderr,
+        )
+        return 1
+
     if getattr(args, "direct_only", False):
         return cmd_skip_setup(args)
 
@@ -257,6 +369,12 @@ def cmd_patch(args: argparse.Namespace) -> int:
         organization_name=args.org_name or "",
         assets_dir=Path(args.assets_dir) if args.assets_dir else None,
     )
+
+    restore_log: list[str] = []
+
+    def _emit(msg: str) -> None:
+        print(msg)
+        restore_log.append(msg)
 
     with tempfile.TemporaryDirectory(prefix="mdmpatcher_") as tmp_dir:
         work_root = Path(args.keep_backup) if args.keep_backup else Path(tmp_dir)
@@ -273,14 +391,42 @@ def cmd_patch(args: argparse.Namespace) -> int:
                 organization_name=cfg.organization_name,
                 block_ota=cfg.block_ota,
                 reboot=not args.no_reboot,
+                on_output=_emit,
             )
         else:
             mdmb_dir = build_backup(work_root, device, cfg)
             print(f"[+] Prepared MDM-patched backup in: {mdmb_dir}")
 
+            # ---- Pre-restore safety gate #2: backup structure (read-only) --
+            verification = verify_backup(
+                mdmb_dir,
+                selected_mode,
+                deep=bool(getattr(args, "deep_verify", False)),
+            )
+            verification.print(verbose=False)
+
             if args.dry_run:
                 print("[*] Dry-run requested; skipping USB restore.")
-                return 0
+                return 0 if verification.ok else 1
+
+            if not verification.ok:
+                if not force:
+                    print(
+                        "\n[!] ABORTING BEFORE RESTORE — the backup failed verification:",
+                        file=sys.stderr,
+                    )
+                    for check in verification.failures:
+                        print(f"    - {check.name}: {check.detail}", file=sys.stderr)
+                    print(
+                        "    A bad backup can trigger iOS 'safe state recovery'.\n"
+                        "    Rebuild it (mdmpatcher build-backup ...) or pass --force to override.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                print(
+                    "[!] --force given: continuing despite "
+                    f"{len(verification.failures)} verification failure(s)."
+                )
 
             if is_27 or selected_mode == "ios27":
                 print(
@@ -304,6 +450,7 @@ def cmd_patch(args: argparse.Namespace) -> int:
                 reboot=not args.no_reboot,
                 skip_apps=True,
                 ios27_mode=(is_27 or selected_mode == "ios27"),
+                on_output=_emit,
             )
 
         if rc == 0:
@@ -315,12 +462,19 @@ def cmd_patch(args: argparse.Namespace) -> int:
             )
             return 0
 
+        print(f"\n[!] Restore exited with code {rc}.", file=sys.stderr)
+        hints = classify_restore_failure(rc, "\n".join(restore_log))
+        if hints:
+            print("    Most likely cause(s):", file=sys.stderr)
+            for hint in hints:
+                print(f"      - {hint}", file=sys.stderr)
         print(
-            f"\n[!] Restore exited with code {rc}.\n"
-            "    Troubleshooting:\n"
+            "    General checks:\n"
             "      - Ensure Find My iPhone is turned off.\n"
             "      - Ensure the device is on the Setup Assistant ('Hello') screen.\n"
-            "      - On iOS 27+, try `./mdmpatcher.py skip-setup` (Vector A) or `./mdmpatcher.py patch --full-backup-g1` (Vector B).",
+            "      - Validate the backup first: mdmpatcher preflight --backup <dir>\n"
+            "      - On iOS 27+, try `mdmpatcher skip-setup` (Vector A) or "
+            "`mdmpatcher patch --full-backup-g1` (Vector B).",
             file=sys.stderr,
         )
         return rc
@@ -546,9 +700,11 @@ def cmd_gui(_args: argparse.Namespace) -> int:
     print("  3) Direct USB Setup & CloudConfig Bypass (`skip-setup`, iOS 27 safe)")
     print("  4) Patch connected iOS 27 device (`full-backup-g1` protective route)")
     print("  5) Deobfuscate MDMPatcher-Universal assets (`deobfuscate`)")
+    print("  6) Update MDMPatcher-Linux from git (`update`)")
+    print("  7) Run pre-flight safety checks (`preflight`)")
     print("  0) Exit")
     try:
-        choice = input("\nSelect an option [0-5]: ").strip()
+        choice = input("\nSelect an option [0-7]: ").strip()
     except EOFError:
         return 0
 
@@ -583,6 +739,134 @@ def cmd_gui(_args: argparse.Namespace) -> int:
                 output="assets/deobfuscated",
             )
         )
+    if choice == "6":
+        return cmd_update(argparse.Namespace(branch="", no_deps=False))
+    if choice == "7":
+        return cmd_preflight(
+            argparse.Namespace(
+                udid=None,
+                backup=None,
+                mode="enhanced",
+                deep=False,
+                verbose=False,
+                json=False,
+            )
+        )
+    return 0
+
+
+UPDATE_HELP_URL = (
+    "https://raw.githubusercontent.com/supermario3D1/mdmpatcher-linux/main/scripts/install.sh"
+)
+
+
+def _git(repo_root: Path) -> str | None:
+    """Return the path to `git` if it is available."""
+    return shutil.which("git")
+
+
+def _git_out(repo_root: Path, *args: str) -> str:
+    git = _git(repo_root)
+    if git is None:
+        return ""
+    proc = subprocess.run(
+        [git, "-C", str(repo_root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """
+    Self-update: fast-forward the installation to the latest code on the
+    tracked branch (default: `main`) and refresh Python dependencies.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    print(f"[*] MDMPatcher-Linux v{__version__} — self-update")
+    print(f"    Install directory: {repo_root}")
+
+    git = _git(repo_root)
+    if git is None:
+        print("[!] `git` was not found, so an in-place update is not possible.", file=sys.stderr)
+        print("    Re-run the one-line installer to re-download the tool:", file=sys.stderr)
+        print(f"      curl -fsSL {UPDATE_HELP_URL} | bash", file=sys.stderr)
+        return 1
+
+    if not (repo_root / ".git").exists():
+        print(
+            f"[!] {repo_root} is not a git checkout (it was installed from a tarball).",
+            file=sys.stderr,
+        )
+        print("    Re-run the installer to replace it with a git clone:", file=sys.stderr)
+        print(f"      curl -fsSL {UPDATE_HELP_URL} | bash", file=sys.stderr)
+        return 1
+
+    branch = args.branch or _git_out(repo_root, "rev-parse", "--abbrev-ref", "HEAD") or "main"
+    before = _git_out(repo_root, "rev-parse", "--short", "HEAD")
+
+    print(f"[*] Fetching origin/{branch} ...")
+    if subprocess.run(
+        [git, "-C", str(repo_root), "fetch", "--quiet", "origin", branch], check=False
+    ).returncode != 0:
+        print(
+            "[!] Could not reach the remote repository (offline?). Nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if subprocess.run(
+        [git, "-C", str(repo_root), "pull", "--ff-only", "origin", branch], check=False
+    ).returncode != 0:
+        print(
+            f"[!] Fast-forward update failed — {repo_root} has local modifications.",
+            file=sys.stderr,
+        )
+        print(
+            "    Review them with:  git -C "
+            f"{repo_root} status   (or re-install into a clean directory)",
+            file=sys.stderr,
+        )
+        return 1
+
+    after = _git_out(repo_root, "rev-parse", "--short", "HEAD")
+    if after and after == before:
+        print(f"[=] Already up to date with origin/{branch} ({after or 'unknown'}).")
+    else:
+        print(f"[+] Updated {before or '?'} -> {after or '?'} (origin/{branch}).")
+
+    if args.no_deps:
+        return 0
+
+    venv_python = repo_root / ".venv" / "bin" / "python3"
+    python = str(venv_python) if venv_python.exists() else sys.executable
+    # Only request the optional `usb` extra when this checkout defines one.
+    extra = "[usb]"
+    try:
+        pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8", errors="ignore")
+        if not any(line.strip().startswith("usb") for line in pyproject.splitlines()):
+            extra = ""
+    except OSError:
+        extra = ""
+    print(f"[*] Refreshing Python dependencies with {python} ...")
+    install = [
+        python,
+        "-m",
+        "pip",
+        "install",
+        "-e",
+        f"{repo_root}{extra}",
+    ]
+    if subprocess.run(install, check=False).returncode != 0:
+        install.insert(2, "--break-system-packages")
+        if subprocess.run(install, check=False).returncode != 0:
+            print(
+                "[!] Python dependencies could not be refreshed (offline?). The update still applied.",
+                file=sys.stderr,
+            )
+            return 0
+    print("[+] Python dependencies up to date.")
     return 0
 
 
@@ -670,6 +954,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--ignore-find-my",
         action="store_true",
         help="Proceed even if Find My iPhone appears enabled",
+    )
+    p_patch.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip the pre-restore verification gate (NOT recommended: a bad backup can trigger iOS safe-state recovery)",
+    )
+    p_patch.add_argument(
+        "--deep-verify",
+        action="store_true",
+        help="Also re-verify payload SHA-1 hashes during the pre-restore gate (slower)",
     )
     p_patch.set_defaults(func=cmd_patch)
 
@@ -811,6 +1105,65 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_insp.add_argument("path", help="Path to backup directory")
     p_insp.set_defaults(func=cmd_inspect)
+
+    # preflight (read-only safety audit: host + device + backup)
+    p_pre = sub.add_parser(
+        "preflight",
+        help="Validate host, device and/or a generated backup without touching the device",
+    )
+    p_pre.add_argument("-u", "--udid", help="Target device UDID")
+    p_pre.add_argument(
+        "--host",
+        action="store_true",
+        help="Audit the Linux host (USB backends, usbmuxd, udev rules)",
+    )
+    p_pre.add_argument(
+        "--device",
+        action="store_true",
+        help="Audit the connected device (identity, Find My, mode match)",
+    )
+    p_pre.add_argument(
+        "-b",
+        "--backup",
+        help="Backup directory to verify (the MDMB dir is auto-detected)",
+    )
+    p_pre.add_argument(
+        "-m",
+        "--mode",
+        choices=["enhanced", "ios27", "modern", "sqlite", "legacy"],
+        default="enhanced",
+        help="Patch mode the backup was built with (default: enhanced)",
+    )
+    p_pre.add_argument(
+        "--deep",
+        action="store_true",
+        help="Also re-verify payload SHA-1 hashes (slower)",
+    )
+    p_pre.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print passing checks too",
+    )
+    p_pre.add_argument("--json", action="store_true", help="Emit JSON instead of text")
+    p_pre.set_defaults(func=cmd_preflight)
+
+    # update (self-update from the tracked git branch, default: main)
+    p_upd = sub.add_parser(
+        "update",
+        help="Update this installation from the git remote (default branch: main)",
+    )
+    p_upd.add_argument(
+        "-b",
+        "--branch",
+        default="",
+        help="Branch to pull from (default: the branch currently checked out)",
+    )
+    p_upd.add_argument(
+        "--no-deps",
+        action="store_true",
+        help="Only pull the source code; do not refresh Python dependencies",
+    )
+    p_upd.set_defaults(func=cmd_update)
 
     # gui
     p_gui = sub.add_parser(

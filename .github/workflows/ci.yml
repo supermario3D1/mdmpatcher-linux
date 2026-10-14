@@ -1,4 +1,4 @@
-name: CI — Linux Matrix (Ubuntu & Fedora)
+name: CI — Linux Matrix (Ubuntu & Fedora) + One-Command Installer
 
 on:
   push:
@@ -27,6 +27,9 @@ jobs:
         run: |
           ./mdmpatcher.py --version
           ./mdmpatcher.py deobfuscate -a assets -o /tmp/deob_check
+          ./mdmpatcher.py build-backup -o /tmp/ci_backup -m ios27 -i 27.0 -b 24A335
+          ./mdmpatcher.py preflight -b /tmp/ci_backup -m ios27
+          ./mdmpatcher.py preflight -b /tmp/ci_backup -m ios27 --json
 
   test-fedora:
     name: Python & Installer Check (Fedora Container)
@@ -41,3 +44,27 @@ jobs:
       - name: Run Unit & Integration Tests on Fedora
         run: |
           python3 -m unittest discover -s tests -v
+
+  test-installer:
+    name: One-Command Installer (curl | bash bootstrap)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the one-line installer from the current branch
+        env:
+          # `pull_request` events report the ref as "<pr>/merge"; use the real branch.
+          MDM_TEST_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          echo "Branch under test: ${MDM_TEST_BRANCH}"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${MDM_TEST_BRANCH}/scripts/install.sh" \
+            | bash -s -- --dir "$HOME/mdmpatcher-ci" --branch "${MDM_TEST_BRANCH}"
+      - name: Verify the `mdmpatcher` command installed on PATH
+        run: |
+          export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+          ls -l /usr/local/bin/mdmpatcher "$HOME/.local/bin/mdmpatcher" 2>&1 || true
+          command -v mdmpatcher || { echo "::error::launcher not found on PATH"; exit 1; }
+          mdmpatcher --version
+          mdmpatcher deobfuscate -a "$HOME/mdmpatcher-ci/assets" -o /tmp/deob_ci
+      - name: Verify `mdmpatcher update` reports an up-to-date checkout
+        run: |
+          "$HOME/mdmpatcher-ci/.venv/bin/python3" "$HOME/mdmpatcher-ci/mdmpatcher.py" update --no-deps
