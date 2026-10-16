@@ -51,7 +51,7 @@
     <rect x="0" y="0" width="318" height="28" rx="14" fill="#0c2438" stroke="#06b6d4" stroke-width="1.2"/>
     <circle cx="16" cy="14" r="5" fill="#10b981"/>
     <text x="30" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="700" fill="#67e8f9">
-      RELEASE v2.7.0 • iOS 27 G1 + MCINSTALL
+      RELEASE v2.8.0 • iOS 26 G1 + MCINSTALL
     </text>
 
     <!-- Main Title -->
@@ -64,15 +64,15 @@
       Universal iOS &amp; iPadOS Remote Management &amp; Setup Assistant Patcher for Linux
     </text>
     <text x="0" y="142" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15.5" fill="#64748b">
-      Reverse-engineered from MDMPatcher-Universal &amp; MDMPatcher-Enhanced • Built for iOS 9 through iOS 26 &amp; iOS 27+
+      Reverse-engineered from MDMPatcher-Universal &amp; MDMPatcher-Enhanced • Verified on iOS 9 through iOS 26.x
     </text>
 
     <!-- Feature Badges Row -->
     <g transform="translate(0, 168)">
-      <!-- Badge 1: iOS 27 Ready -->
+      <!-- Badge 1: iOS 26 Verified -->
       <rect x="0" y="0" width="166" height="36" rx="8" fill="#062c24" stroke="#10b981" stroke-width="1.5"/>
       <text x="83" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="13.5" font-weight="700" fill="#6ee7b7" text-anchor="middle">
-        ✓ iOS 27.0+ Safe
+        ✓ iOS 26.x Verified
       </text>
 
       <!-- Badge 2: Fedora Linux -->

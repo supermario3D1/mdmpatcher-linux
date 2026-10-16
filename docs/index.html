@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MDMPatcher-Linux v2.7.0 — Official Linux iOS 9 – 27+ MDM &amp; Setup Patcher</title>
+  <title>MDMPatcher-Linux v2.8.0 — Official Linux iOS 9 – 26.x MDM &amp; Setup Patcher</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <style>
     :root {
@@ -236,6 +236,17 @@
       font-weight: 700;
     }
     tr:last-child td { border-bottom: none; }
+    .pill-exp {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.16);
+      color: #fcd34d;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
     .pill-ok {
       display: inline-block;
       background: rgba(16, 185, 129, 0.16);
@@ -270,12 +281,12 @@
     <div class="nav-inner">
       <a class="brand" href="#">
         <img src="assets/logo.svg" alt="MDMPatcher-Linux Logo" />
-        <span>MDMPatcher-Linux <code style="color:#6ee7b7;">v2.7.0</code></span>
+        <span>MDMPatcher-Linux <code style="color:#6ee7b7;">v2.8.0</code></span>
       </a>
       <nav class="nav-links">
-        <a href="#ios27">iOS 27 Architecture</a>
+        <a href="#ios26">iOS 26 Engine</a>
         <a href="#install">Fedora &amp; Linux Install</a>
-        <a href="#compatibility">iOS 9–27 Matrix</a>
+        <a href="#compatibility">iOS 9–26.x Matrix</a>
         <a href="#usage">CLI &amp; GUI Guide</a>
         <a href="REVERSE_ENGINEERING.html">Reverse Engineering</a>
       </nav>
@@ -288,44 +299,56 @@
       <p class="lead" style="margin: 0 auto 16px;">
         The complete Linux port and reverse-engineered upgrade of <strong>MDMPatcher-Universal</strong> and
         <strong>MDMPatcher-Enhanced</strong>—engineered for <strong>Fedora Linux</strong>, <strong>Ubuntu/Debian</strong>,
-        and <strong>Arch Linux</strong> with native multi-vector support for <strong>iOS 9 through iOS 26 &amp; iOS 27+</strong>.
+        and <strong>Arch Linux</strong>, and verified on <strong>iOS 9 through iOS 26.x</strong> (every iPhone and iPad
+        shipping today, builds <code>23A+</code>).
       </p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="#install">Quick Install (Fedora / Ubuntu / Arch)</a>
-        <a class="btn btn-secondary" href="#ios27">How iOS 27 Support Works</a>
+        <a class="btn btn-secondary" href="#ios26">How the iOS 26 Engine Works</a>
         <a class="btn btn-secondary" href="https://github.com/supermario3D1/mdmpatcher-linux">View on GitHub</a>
       </div>
     </section>
 
-    <section id="ios27">
-      <span class="section-tag">iOS 27 Breakthrough</span>
-      <h2>How MDMPatcher-Linux Reliably Works on iOS 27 (Without Factory-Reset Loops)</h2>
+    <div class="callout" style="border-left-color:#10b981; background:rgba(16, 185, 129, 0.08);">
+      <strong>Supported iOS versions: iOS 9.0 – iOS 26.x.</strong><br />
+      MDMPatcher-Linux is verified on every iOS / iPadOS release from <strong>9.0 through 26.x</strong>
+      (builds <code>23A+</code>) — which is the newest iOS shipping on supported iPhones and iPads today.
+      Anything <em>below</em> iOS 27 is covered.<br />
+      <strong>iOS 27.0+</strong> (builds <code>24A+</code>) is <strong>experimental</strong>: the same engine
+      still runs, but every command prints an <code>UNVERIFIED FIRMWARE</code> warning before it touches the
+      device, and the outcome is not guaranteed.
+    </div>
+
+    <section id="ios26">
+      <span class="section-tag">Verified on iOS 26.x</span>
+      <h2>How the Engine Works on iOS 9 – 26.x (Without Factory-Reset Loops)</h2>
       <p class="lead">
-        In iOS 27 (builds <code>24A+</code>), Apple hardened <code>BackupAgent2</code> against legacy partial/sparse restores
-        and updated <code>backupd</code> (WWDC26 Device Management) to ignore stale MDM profiles from synthetic partial backups.
-        MDMPatcher-Linux solves this with a <strong>Dual-Vector iOS 27 Engine</strong>:
+        Modern iOS (verified through <strong>iOS 26.x</strong>, builds <code>23A+</code>) hardened
+        <code>BackupAgent2</code> against legacy partial/sparse restores and no longer trusts stale MDM
+        profiles restored from a synthetic partial backup. MDMPatcher-Linux solves this with a
+        <strong>Dual-Vector Engine</strong> (<code>mdmpatcher/ios26.py</code>):
       </p>
 
-      <img src="assets/ios27-architecture.svg" alt="iOS 27 Architecture Diagram" style="width:100%; border-radius:16px; margin-bottom:24px;" />
+      <img src="assets/ios26-architecture.svg" alt="MDMPatcher-Linux Engine Architecture Diagram" style="width:100%; border-radius:16px; margin-bottom:24px;" />
 
       <div class="grid-3">
         <div class="card">
           <h3>⚡ Vector A: Direct USB <code>MCInstall</code> Push</h3>
           <p>
             Connects over USB Lockdown directly to <code>com.apple.mobile.MCInstall</code> (<code>MobileConfigService</code>)
-            and pushes <code>SetCloudConfiguration</code> with all <strong>80 iOS 27 <code>SkipSetup</code> panes</strong>
+            and pushes <code>SetCloudConfiguration</code> with all <strong>80 <code>SkipSetup</code> panes</strong>
             (including <code>OSShowcase</code>, <code>SafetyAndHandling</code>, <code>AgeBasedSafetySettings</code>,
             <code>Intelligence</code>, and <code>CameraButton</code>) plus persistent <code>lockdownd</code>
             <code>com.apple.purplebuddy</code> completion flags—<strong>with zero partial-restore wipe risk</strong>.
           </p>
         </div>
         <div class="card">
-          <h3>🛡️ Vector B: iOS 27 G1 Donor-Cloned Pipeline</h3>
+          <h3>🛡️ Vector B: G1 Donor-Cloned Pipeline</h3>
           <p>
             Strips active <code>MDM.plist</code> and <code>MDMEvents.plist</code> from
             <code>SysSharedContainerDomain-systemgroup.com.apple.configurationprofiles</code>, clones real donor
             <code>MBFile</code> blobs with SpringBoard <code>ExtendedAttributes</code>, synthesizes parent directory rows,
-            and stamps strictly unique monotonic <code>InodeNumber</code> values so iOS 27's <code>BackupAgent2</code>
+            and stamps strictly unique monotonic <code>InodeNumber</code> values so <code>BackupAgent2</code>'s
             inode-deduplication pass accepts every injected file.
           </p>
         </div>
@@ -378,7 +401,7 @@ sudo cp scripts/39-usbmuxd-mdmpatcher.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules &amp;&amp; sudo udevadm trigger
 sudo systemctl start usbmuxd.service
 
-# Optional: Install pymobiledevice3 for iOS 27 Direct MCInstall support
+# Optional: Install pymobiledevice3 for Direct MCInstall support
 python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -e ".[usb]"</code></pre>
         </div>
@@ -428,7 +451,7 @@ cd mdmpatcher-linux
 
     <section id="compatibility">
       <span class="section-tag">Firmware Matrix</span>
-      <h2>iOS &amp; iPadOS Compatibility Matrix (iOS 9 – iOS 27+)</h2>
+      <h2>iOS &amp; iPadOS Compatibility Matrix (iOS 9 – iOS 26.x)</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -442,18 +465,18 @@ cd mdmpatcher-linux
           </thead>
           <tbody>
             <tr>
-              <td><strong>iOS 27.0+</strong></td>
-              <td><code>24A335+</code></td>
-              <td><code>ios27</code> (auto-detected)</td>
-              <td>Vector A (<code>MCInstall</code> 80-pane <code>SetCloudConfiguration</code> + <code>lockdownd</code>) + Vector B (G1 Donor-Cloned <code>Manifest.db</code>)</td>
-              <td><span class="pill-ok">Supported</span></td>
+              <td><strong>iOS 26.0 – 26.x</strong> <em>(latest iOS)</em></td>
+              <td><code>23A+ – 23G+</code></td>
+              <td><code>enhanced</code> (default) / <code>ios26</code></td>
+              <td><code>SysSharedContainerDomain</code> + <code>ManagedPreferencesDomain</code> + <code>MCInstall</code></td>
+              <td><span class="pill-ok">Verified</span></td>
             </tr>
             <tr>
-              <td><strong>iOS 26.0 – 26.7</strong></td>
-              <td><code>23A+ – 23G+</code></td>
-              <td><code>enhanced</code> / <code>ios27</code></td>
-              <td><code>SysSharedContainerDomain</code> + <code>ManagedPreferencesDomain</code> + <code>MCInstall</code></td>
-              <td><span class="pill-ok">Supported</span></td>
+              <td><strong>iOS 27.0+</strong></td>
+              <td><code>24A335+</code></td>
+              <td><code>ios26</code> (auto-detected)</td>
+              <td>Vector A (<code>MCInstall</code> 80-pane <code>SetCloudConfiguration</code> + <code>lockdownd</code>) + Vector B (G1 Donor-Cloned <code>Manifest.db</code>)</td>
+              <td><span class="pill-exp">Experimental</span></td>
             </tr>
             <tr>
               <td><strong>iOS 17.0 – 18.6</strong></td>
@@ -480,8 +503,17 @@ cd mdmpatcher-linux
         </table>
       </div>
 
+      <div class="callout" style="border-left-color:#f59e0b;">
+        <strong>About the Experimental iOS 27.0+ row:</strong><br />
+        MDMPatcher-Linux does not block newer firmware — it warns and continues, because the
+        <code>MCInstall</code> and G1 pipeline code paths are the ones most likely to keep working.
+        Treat any iOS 27+ run as unverified: keep a real backup, expect that a failed restore can
+        trigger <code>BackupAgent2</code> safe-state recovery, and prefer
+        <code>./mdmpatcher.py skip-setup</code> (Vector A, no restore) when experimenting.
+      </div>
+
       <div class="callout">
-        <strong>Important Post-Reboot Step on iOS 17.2, iOS 18, iOS 26 &amp; iOS 27+:</strong><br />
+        <strong>Important Post-Reboot Step on iOS 17.2, iOS 18 &amp; iOS 26.x:</strong><br />
         When the device reboots after patching, if iOS displays the <em>"iPhone Partially Set Up"</em> screen, tap
         <strong>"Continue with Partial Setup"</strong> (small button at the bottom) — do <strong>not</strong> tap the blue
         <em>"Finish Setting Up"</em> button. The device will immediately enter the Home Screen with Remote Management bypassed.
@@ -494,13 +526,13 @@ cd mdmpatcher-linux
       <pre><code># 1. Verify USB connection and check iOS version / Find My status
 ./mdmpatcher.py info
 
-# 2. One-command auto-detect &amp; patch (auto-selects 'ios27' engine on iOS 27+ or 'enhanced' on iOS 9-26)
+# 2. One-command auto-detect &amp; patch (uses 'enhanced' on iOS 9-26.x; 'ios26' above that)
 ./mdmpatcher.py patch
 
-# 3. iOS 27 Vector A Only: Direct USB MCInstall CloudConfiguration &amp; Setup Assistant Skip (No Restore)
+# 3. Vector A Only: Direct USB MCInstall CloudConfiguration &amp; Setup Assistant Skip (No Restore)
 ./mdmpatcher.py skip-setup
 
-# 4. iOS 27 Vector B Full Protective Pipeline (Full Device Backup -> MDM Purge &amp; Donor Injection -> Verified Restore)
+# 4. Vector B Full Protective Pipeline (Full Device Backup -> MDM Purge &amp; Donor Injection -> Verified Restore)
 ./mdmpatcher.py patch --full-backup-g1
 
 # 5. Patch an existing Backup v3.3+ (Manifest.db) directory offline
@@ -512,7 +544,7 @@ cd mdmpatcher-linux
   </main>
 
   <footer>
-    <p><strong>MDMPatcher-Linux v2.7.0</strong> • Open-source security research &amp; authorized device recovery toolkit • MIT License</p>
+    <p><strong>MDMPatcher-Linux v2.8.0</strong> • Open-source security research &amp; authorized device recovery toolkit • MIT License</p>
   </footer>
 
   <script>

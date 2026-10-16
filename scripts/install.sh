@@ -57,7 +57,7 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
 fi
 
 echo -e "${BOLD}=====================================================================${RESET}"
-echo -e "${BOLD}  MDMPatcher-Linux v2.7.0 — Official Linux Installer (iOS 9 – 27+)${RESET}"
+echo -e "${BOLD}  MDMPatcher-Linux v2.8.0 — Official Linux Installer (iOS 9 – 26.x)${RESET}"
 echo -e "${BOLD}=====================================================================${RESET}"
 
 DISTRO_ID="unknown"
@@ -208,7 +208,7 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 if [[ "$WITH_VENV" -eq 1 ]]; then
-    info "Creating Python virtual environment at ${REPO_ROOT}/.venv (for iOS 27 MobileConfigService support)..."
+    info "Creating Python virtual environment at ${REPO_ROOT}/.venv (for iOS 26.x MobileConfigService support)..."
     python3 -m venv "${REPO_ROOT}/.venv"
     "${REPO_ROOT}/.venv/bin/pip" install --upgrade pip
     "${REPO_ROOT}/.venv/bin/pip" install -e "${REPO_ROOT}[usb]"

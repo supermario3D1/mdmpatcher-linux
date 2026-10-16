@@ -18,9 +18,9 @@ Thank you for your interest in contributing to **MDMPatcher-Linux**!
    make test
    ```
 
-## Pre-Restore Safety Requirements (iOS 27+)
+## Pre-Restore Safety Requirements (verified on iOS 9 - 26.x; iOS 27+ experimental)
 
-Any changes touching `mdmpatcher/ios27.py`, `mdmpatcher/manifest_db.py`, or `mdmpatcher/patcher.py` **must** preserve all 6 checks in `verify_ios27_backup()`:
+Any changes touching `mdmpatcher/ios26.py`, `mdmpatcher/manifest_db.py`, or `mdmpatcher/patcher.py` **must** preserve all 6 checks in `verify_ios26_backup()`:
 1. Valid SQLite3 `Manifest.db` schema.
 2. Unencrypted `Manifest.plist` (`IsEncrypted = False`) written atomically via `atomic_write_plist()`.
 3. `Status.plist` `SnapshotState == "finished"`.

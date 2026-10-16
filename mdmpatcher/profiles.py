@@ -1,10 +1,13 @@
 """
-Modern iOS (iOS 15, 16, 17, 18, 26, and 27+) MDM & Setup Assistant bypass profile generators.
+Modern iOS (iOS 15, 16, 17, 18, and 26.x) MDM & Setup Assistant bypass profile generators.
+
+Verified support window: iOS 9 - iOS 26.x. iOS 27.0+ (builds 24A+) is experimental
+and every command warns before touching such a device.
 
 Why the original MDMPatcher-Universal / MDMPatcher-Enhanced fails on modern iOS:
   1. Legacy iOS (< 13) only checked `HomeDomain/Library/ConfigurationProfiles/*`
      and `HomeDomain/Library/Preferences/com.apple.purplebuddy.plist`.
-  2. Modern iOS (iOS 15 - 26+) stores DEP / Automated Device Enrollment (ADE)
+  2. Modern iOS (iOS 15 - 26.x) stores DEP / Automated Device Enrollment (ADE)
      and Cloud Configuration state in the shared system container:
        Domain: `SysSharedContainerDomain-systemgroup.com.apple.configurationprofiles`
        Path:   `Library/ConfigurationProfiles/CloudConfigurationDetails.plist`
@@ -12,11 +15,12 @@ Why the original MDMPatcher-Universal / MDMPatcher-Enhanced fails on modern iOS:
      and checks managed Setup Assistant state in:
        Domain: `ManagedPreferencesDomain`
        Path:   `mobile/com.apple.purplebuddy.plist`
-  3. On iOS 27 (builds 24A+), Apple made two further changes (WWDC26 Device Management):
+  3. On iOS 26.2+ (and the unverified iOS 27 builds 24A+), Apple made two
+     further changes (Device Management backup restoration policy):
      a) `backupd` / `BackupAgent2` no longer restores stale MDM configuration from
         synthetic partial backups and triggers "safe state recovery" if a partial
         restore lacks valid `Manifest.db` `MBFile` extended attributes or unique inodes.
-     b) Setup Assistant added new iOS 26/27 panes (`OSShowcase`, `SafetyAndHandling`,
+     b) Setup Assistant added new iOS 26 panes (`OSShowcase`, `SafetyAndHandling`,
         `AgeBasedSafetySettings`, `EnableLockdownMode`, `AdditionalPrivacySettings`,
         `WebContentFiltering`, `CameraButton`, `Intelligence`, etc.) and supports
         direct Cloud Configuration injection over `com.apple.mobile.MCInstall`
@@ -38,7 +42,8 @@ HOME_DOMAIN = "HomeDomain"
 ROOT_DOMAIN = "RootDomain"
 SYSTEM_PREFS_DOMAIN = "SystemPreferencesDomain"
 
-# Canonical 80-pane SkipSetup list covering iOS 9 through iOS 26 and iOS 27+.
+# Canonical 80-pane SkipSetup list covering iOS 9 through iOS 26.x
+# (iOS 27.0+ / builds 24A+ is best-effort and unverified).
 # Unrecognized pane identifiers on older iOS versions are safely ignored as no-ops.
 SKIP_SETUP_KEYS: list[str] = [
     "Location",
@@ -126,7 +131,7 @@ SKIP_SETUP_KEYS: list[str] = [
 ]
 
 
-def build_ios27_cloud_config(
+def build_ios26_cloud_config(
     existing: dict[str, Any] | None = None,
     *,
     supervised: bool = False,
@@ -135,8 +140,8 @@ def build_ios27_cloud_config(
 ) -> dict[str, Any]:
     """
     Build the canonical CloudConfiguration dictionary used by both:
-      - iOS 27 `MobileConfigService.set_cloud_configuration` (direct USB push)
-      - iOS 15-27 `CloudConfigurationDetails.plist` in backup-restore flows.
+      - `MobileConfigService.set_cloud_configuration` (direct USB push)
+      - iOS 15 - 26.x `CloudConfigurationDetails.plist` in backup-restore flows.
     """
     cloud_config: dict[str, Any] = dict(existing or {})
     cloud_config["SkipSetup"] = list(SKIP_SETUP_KEYS)
@@ -182,9 +187,9 @@ def build_cloud_config_details_plist(
       - `IsMDMUnremovable = 0`
       - `IsMandatory = False`
       - `PostSetupProfileWasInstalled = True`
-      - `SkipSetup = [...]` (skips remote management and all iOS 15-27+ setup screens)
+      - `SkipSetup = [...]` (skips remote management and all iOS 15-26.x setup screens)
     """
-    payload = build_ios27_cloud_config(
+    payload = build_ios26_cloud_config(
         supervised=is_supervised,
         organization_name=organization_name,
     )
@@ -197,7 +202,7 @@ def build_managed_purplebuddy_plist(
 ) -> bytes:
     """
     Generate `mobile/com.apple.purplebuddy.plist` for `ManagedPreferencesDomain`.
-    Modern iOS (15 - 27+) Setup.app checks `ManagedPreferencesDomain` in addition to
+    Modern iOS (15 - 26.x) Setup.app checks `ManagedPreferencesDomain` in addition to
     `HomeDomain` to determine if Setup Assistant has completed all steps.
     """
     payload: dict[str, Any] = {
@@ -211,14 +216,15 @@ def build_managed_purplebuddy_plist(
 def build_home_purplebuddy_plist(
     existing_plist_bytes: bytes | None = None,
     *,
-    setup_version: int = 27,
+    setup_version: int = 26,
     fmt: int = plistlib.FMT_BINARY,
 ) -> bytes:
     """
     Generate or upgrade `Library/Preferences/com.apple.purplebuddy.plist` for `HomeDomain`.
     Fixes the legacy Chinese locale (`zh_CN`) and outdated `SetupVersion = 7` present in
     MDMPatcher-Universal's 2018 iMyFone backup while preserving compatibility keys.
-    Defaults `SetupVersion` to `27` for iOS 26/27+ compatibility.
+    Defaults `SetupVersion` to `26` (the verified maximum); callers such as
+    `build_ios26_mdm_payloads` raise it to the target device's own iOS major.
     """
     base: dict[str, Any] = {}
     if existing_plist_bytes:
