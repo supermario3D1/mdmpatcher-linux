@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mdmpatcher-linux"
-version = "2.7.0"
-description = "Linux port and iOS 9-27+ reverse-engineered upgrade of MDMPatcher-Universal and MDMPatcher-Enhanced"
+version = "2.8.0"
+description = "Linux port and iOS 9-26.x reverse-engineered upgrade of MDMPatcher-Universal and MDMPatcher-Enhanced"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}

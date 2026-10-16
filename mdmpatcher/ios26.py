@@ -1,28 +1,35 @@
 """
-iOS 27 (and iOS 26.2+) Multi-Vector MDM & Setup Assistant Bypass Engine.
+iOS 26.x (current public release line) Multi-Vector MDM & Setup Assistant Bypass Engine.
 
-Why legacy SparseRestore / partial backup-restore tools fail on iOS 27:
-  1. Partial-Restore Safe-State Recovery (iOS 27.0+, builds 24A+):
+Verified support window: **iOS / iPadOS 9.0 - 26.x** (builds `23A+`), which covers
+every shipping iPhone/iPad today. Firmware above that window (iOS 27.0+ / builds
+`24A+`) is *not* verified: this engine still runs on it, but
+`unsupported_ios_notice()` / `warn_if_unsupported_ios()` print an explicit
+experimental warning before anything is sent to the device (see
+`MAX_SUPPORTED_IOS_MAJOR`).
+
+Why legacy SparseRestore / partial backup-restore tools fail on modern iOS:
+  1. Partial-Restore Safe-State Recovery:
      Apple patched `itunesstored` / `bookassetd` partial restores and hardened
      `BackupAgent2`. Sending a synthetic partial backup without the device's
      complete backup state or without valid `ExtendedAttributes` + unique
      non-zero `InodeNumber` values triggers "safe state recovery" (which loops
      Setup Assistant or forces a factory reset).
-  2. WWDC26 Device Management Backup Restoration Policy:
-     Per Apple's WWDC26 deployment documentation, iOS 27 / iPadOS 27 devices
-     no longer trust stale MDM enrollment profiles from a synthetic backup alone.
+  2. Device Management Backup Restoration Policy:
+     Per Apple's deployment documentation, current iOS devices no longer trust
+     stale MDM enrollment profiles from a synthetic backup alone.
 
-How MDMPatcher-Linux reliably supports iOS 27:
-  - Vector A (`ios27_direct_skip_setup` / `MCInstall` + `lockdownd`):
+How MDMPatcher-Linux bypasses both restrictions on iOS 9 - 26.x:
+  - Vector A (`ios26_direct_skip_setup` / `MCInstall` + `lockdownd`):
     Connects over USB Lockdown directly to `com.apple.mobile.MCInstall`
     (`MobileConfigService`) and pushes `SetCloudConfiguration` with all 80
-    iOS 27 `SKIP_SETUP_KEYS`, `CloudConfigurationUIComplete = True`,
+    `SKIP_SETUP_KEYS`, `CloudConfigurationUIComplete = True`,
     `ConfigurationWasApplied = True`, `IsSupervised = False`, and
     `PostSetupProfileWasInstalled = True`, plus persistent `lockdownd`
-    `com.apple.purplebuddy` completion keys — WITHOUT running any partial
+    `com.apple.purplebuddy` completion keys - WITHOUT running any partial
     backup restore (zero factory-reset loop risk).
-  - Vector B (`patch_ios27_existing_backup` & `run_ios27_g1_pipeline`):
-    Implements the iOS 27 G1 "Full-Backup -> MDM Purge & Donor-Cloned
+  - Vector B (`patch_ios26_existing_backup` & `run_ios26_g1_full_backup_patch`):
+    Implements the G1 "Full-Backup -> MDM Purge & Donor-Cloned
     Manifest.db Injection -> Pre-Restore Verification Gate -> Controlled
     No-Reboot Restore -> Post-Restore MCInstall Sweep" pipeline:
       1. Strips `MDM.plist`, `MDMEvents.plist`, and restrictive
@@ -33,7 +40,7 @@ How MDMPatcher-Linux reliably supports iOS 27:
          exception), synthesizes missing parent directory rows (`flags=2`), and
          stamps strictly unique monotonic `InodeNumber` values so `BackupAgent2`'s
          inode-deduplication pass accepts every row.
-      3. Runs a strict 6-point verification gate (`verify_ios27_backup`) before
+      3. Runs a strict 6-point verification gate (`verify_ios26_backup`) before
          any byte is sent to the device.
       4. Restores with `--no-reboot` (`reboot=False`), 60s SSL handshake timeout,
          stall watchdog (`G1Watchdog`), and `_Mobilebackup2NoEscrow` fallback,
@@ -71,7 +78,7 @@ from .profiles import (
     SYS_CONFIG_PROFILE_DOMAIN,
     build_cloud_config_details_plist,
     build_home_purplebuddy_plist,
-    build_ios27_cloud_config,
+    build_ios26_cloud_config,
     build_managed_purplebuddy_plist,
     build_mc_data_migration_plist,
     build_mcmeta_plist,
@@ -80,8 +87,28 @@ from .profiles import (
     build_user_settings_plist,
 )
 
+# ---------------------------------------------------------------------------
+# Verified support window
+# ---------------------------------------------------------------------------
+# MDMPatcher-Linux is developed and verified against iOS / iPadOS 9.0 through
+# the current public release line, iOS 26.x (builds 23A+).
+#
+# Firmware above the verified maximum (iOS 27.0+ / builds 24A+) is NOT dropped:
+# every code path still runs, but `unsupported_ios_notice()` /
+# `warn_if_unsupported_ios()` print an explicit experimental warning first so
+# nobody patches a device believing the newer firmware is covered.
+MIN_SUPPORTED_IOS_MAJOR = 9
+MAX_SUPPORTED_IOS_MAJOR = 26
+SUPPORTED_IOS_RANGE = "iOS 9.0 \u2013 iOS 26.x"
+
+# `SetupVersion` stamped into com.apple.purplebuddy.plist. It tracks the device's
+# own iOS major so Setup Assistant treats every pane up to that release as done,
+# with a floor of 26 (the oldest release whose full SkipSetup pane list we push).
+MIN_SETUP_VERSION = 26
+
 # Files inside SysSharedContainerDomain-systemgroup.com.apple.configurationprofiles
-# that store active MDM enrollment and event state on iOS 15 - 27+.
+# that store active MDM enrollment and event state on iOS 15 - 26.x
+# (iOS 27.0+ best-effort / unverified).
 MDM_FILES_TO_STRIP: tuple[ tuple[str, str], ... ] = (
     (
         SYS_CONFIG_PROFILE_DOMAIN,
@@ -105,7 +132,7 @@ MDM_FILES_TO_STRIP: tuple[ tuple[str, str], ... ] = (
     ),
 )
 
-# Persistent lockdownd domain/key flags (verified across reboot on iOS 26/27).
+# Persistent lockdownd domain/key flags (verified across reboot on iOS 9 - 26.x).
 LOCKDOWN_COMPLETION_FLAGS: tuple[tuple[str | None, str, Any], ...] = (
     ("com.apple.purplebuddy", "SetupState", "Finished"),
     ("com.apple.purplebuddy", "buddyComplete", True),
@@ -119,13 +146,13 @@ WATCHDOG_STALL_SECONDS = 300.0
 
 
 class G1WatchdogExpired(RuntimeError):
-    """Raised when an iOS 27 G1 operation stalls without device progress."""
+    """Raised when a G1 (iOS 26.x) operation stalls without device progress."""
 
 
 @dataclass
 class G1Watchdog:
     """
-    Stall-based watchdog for iOS 27 backup/restore operations.
+    Stall-based watchdog for iOS 26.x backup/restore operations.
     Fires only when no progress has been reported for `stall_seconds`;
     a device actively transferring data is never interrupted.
     """
@@ -146,13 +173,13 @@ class G1Watchdog:
             minutes = max(1, int(stalled // 60))
             suffix = f" [phase: {phase}]" if phase else ""
             raise G1WatchdogExpired(
-                f"iOS 27 operation timed out: no progress for {minutes} minute(s) — "
+                f"G1 operation timed out: no progress for {minutes} minute(s) — "
                 f"stopped safely before modifying device state.{suffix}"
             )
 
 
 @dataclass
-class IOS27PatchReport:
+class IOS26PatchReport:
     backup_dir: Path
     stripped_mdm_files: list[str] = field(default_factory=list)
     injected_files: int = 0
@@ -168,8 +195,12 @@ def parse_ios_major_version(
     build_version: str | None = None,
 ) -> int:
     """
-    Determine the effective iOS major version from `ProductVersion` (e.g. '27.0', '26.1', '18.2')
-    or `BuildVersion` (e.g. '24A335' -> iOS 27, '23A...' -> iOS 26, '22A...' -> iOS 18).
+    Determine the effective iOS major version from `ProductVersion` (e.g. '26.1', '18.2')
+    or `BuildVersion` (e.g. '23A345' -> iOS 26, '22A...' -> iOS 18).
+
+    Builds above the verified maximum still parse correctly ('24A335' -> iOS 27)
+    so the experimental-firmware warning can be raised; they are simply reported
+    as `"unverified"` by `ios_support_state()`.
     """
     if product_version:
         m = re.match(r"^\s*(\d+)", str(product_version))
@@ -188,12 +219,20 @@ def parse_ios_major_version(
     return 18
 
 
-def is_ios27_or_newer(
+def is_above_supported_ios(
     product_version: str | None = None,
     build_version: str | None = None,
 ) -> bool:
-    """Return True if the target device is running iOS / iPadOS 27.0 or newer (builds 24A+)."""
-    return parse_ios_major_version(product_version, build_version) >= 27
+    """
+    Return True when the device runs a newer major release than the highest
+    verified one — i.e. iOS / iPadOS 27.0+ (builds `24A+`).
+
+    MDMPatcher-Linux is verified through iOS 26.x (builds `23A+`); anything
+    above that keeps working but is treated as experimental.
+    """
+    return parse_ios_major_version(product_version, build_version) > (
+        MAX_SUPPORTED_IOS_MAJOR
+    )
 
 
 def is_ios26_or_newer(
@@ -204,10 +243,76 @@ def is_ios26_or_newer(
     return parse_ios_major_version(product_version, build_version) >= 26
 
 
-def normalize_ios27_upload_path(device_name: str) -> str:
+def ios_support_state(
+    product_version: str | None = None,
+    build_version: str | None = None,
+) -> str:
     """
-    Normalize a device upload path from iOS 27's new physical backup-session root.
-    On iOS 27, `BackupAgent2` uploads raw filesystem paths prefixed with `/.b/<n>/`
+    Classify a device's firmware against the verified support window.
+
+    Returns one of:
+      - `"verified"`   : iOS 9 - iOS 26.x, inside the tested support window.
+      - `"unverified"` : iOS 27.0+ (builds `24A+`) — runs, but experimental.
+      - `"below"`      : older than iOS 9 (best-effort `legacy` mode only).
+    """
+    major = parse_ios_major_version(product_version, build_version)
+    if major > MAX_SUPPORTED_IOS_MAJOR:
+        return "unverified"
+    if major < MIN_SUPPORTED_IOS_MAJOR:
+        return "below"
+    return "verified"
+
+
+def unsupported_ios_notice(
+    product_version: str | None = None,
+    build_version: str | None = None,
+) -> list[str]:
+    """
+    Build the warning lines shown when a device runs above the verified maximum
+    (iOS 27.0+). Returns an empty list when the firmware is inside the
+    verified window (iOS 9 - iOS 26.x).
+    """
+    major = parse_ios_major_version(product_version, build_version)
+    if major <= MAX_SUPPORTED_IOS_MAJOR:
+        return []
+    return [
+        f"[!] UNVERIFIED FIRMWARE: this device reports iOS {major}.x"
+        + (f" (build {build_version})" if build_version else "")
+        + ".",
+        f"    MDMPatcher-Linux is verified on {SUPPORTED_IOS_RANGE} only"
+        " (builds 23A+ and earlier).",
+        "    The engine will still run, but iOS 27.0+ is EXPERIMENTAL and not guaranteed:",
+        "    `BackupAgent2` safe-state recovery and `MobileConfigService` behaviour on 27+",
+        "    have not been validated, and a failed restore can loop Setup Assistant or",
+        "    force a factory reset.",
+        "    Only continue on a device you own and are prepared to restore from scratch.",
+    ]
+
+
+def warn_if_unsupported_ios(
+    product_version: str | None = None,
+    build_version: str | None = None,
+    *,
+    on_output: Callable[[str], None] | None = None,
+) -> bool:
+    """
+    Emit the unverified-firmware notice (if any) and return True when the
+    device is above the verified maximum (iOS 27.0+).
+    """
+    lines = unsupported_ios_notice(product_version, build_version)
+    if not lines:
+        return False
+    emit = on_output or (lambda msg: print(msg))
+    for line in lines:
+        emit(line)
+    return True
+
+
+def normalize_ios26_upload_path(device_name: str) -> str:
+    """
+    Normalize a device upload path from `BackupAgent2`'s physical backup-session root.
+    On modern iOS (verified through 26.x), `BackupAgent2` uploads raw filesystem
+    paths prefixed with `/.b/<n>/`
     (e.g. `/.b/1/Media/DCIM/IMG_0001.PNG` or `/.b/1/Library/Preferences/...`).
     Stripping `.b/<n>/` yields the canonical relative path.
     """
@@ -289,7 +394,7 @@ def _pick_donor_blob(
     conn: sqlite3.Connection, domain: str, relative_path: str
 ) -> bytes | None:
     """
-    Pick a real donor `MBFile` blob from `Manifest.db` that iOS 27's `BackupAgent2`
+    Pick a real donor `MBFile` blob from `Manifest.db` that modern `BackupAgent2`
     already trusts (preferring `Library/SpringBoard/IconState.plist` or any 0644
     regular file with `Digest` + `ExtendedAttributes`).
     """
@@ -536,7 +641,7 @@ def strip_mdm_from_backup(backup_dir: str | Path) -> list[str]:
     return removed
 
 
-def inject_files_into_ios27_backup(
+def inject_files_into_ios26_backup(
     backup_dir: str | Path,
     payloads: list[tuple[str, str, bytes, int, int, int]],
     *,
@@ -544,7 +649,7 @@ def inject_files_into_ios27_backup(
 ) -> tuple[int, int, int, int]:
     """
     Batch-inject `(domain, relative_path, contents, mode, uid, gid)` tuples into
-    an iOS 27 `Manifest.db` backup directory using Donor-Blob Cloning,
+    an iOS 26.x `Manifest.db` backup directory using Donor-Blob Cloning,
     `SPRINGBOARD_EXT_ATTR_BYTES`, parent directory synthesis, and strictly unique
     monotonic `InodeNumber` assignment.
 
@@ -684,23 +789,32 @@ def inject_files_into_ios27_backup(
     return injected, unchanged, dir_rows_added, failed
 
 
-def build_ios27_mdm_payloads(
-    build_version: str = "24A335",
+def build_ios26_mdm_payloads(
+    build_version: str = "23A345",
     *,
+    product_version: str = "26.0",
     is_supervised: bool = False,
     organization_name: str = "",
     block_ota: bool = False,
 ) -> list[tuple[str, str, bytes, int, int, int]]:
     """
-    Construct the full set of iOS 27 MDM-bypass & Setup Assistant payloads
+    Construct the full set of iOS 26.x MDM-bypass & Setup Assistant payloads
     as `(domain, relative_path, contents, mode, uid, gid)` tuples.
+
+    `SetupVersion` is stamped with the target device's own iOS major version
+    (floored at `MIN_SETUP_VERSION`) instead of a hardcoded future release, so
+    the payload stays correct for iOS 9 - 26.x targets.
     """
+    setup_version = max(
+        MIN_SETUP_VERSION,
+        parse_ios_major_version(product_version, build_version),
+    )
     cc_bytes = build_cloud_config_details_plist(
         is_supervised=is_supervised,
         organization_name=organization_name,
     )
     mpb_bytes = build_managed_purplebuddy_plist()
-    hpb_bytes = build_home_purplebuddy_plist(setup_version=27)
+    hpb_bytes = build_home_purplebuddy_plist(setup_version=setup_version)
     us_bytes = build_user_settings_plist()
     mcmeta_bytes = build_mcmeta_plist(build_version)
     mcmig_bytes = build_mc_data_migration_plist()
@@ -803,12 +917,12 @@ def build_ios27_mdm_payloads(
     return payloads
 
 
-def verify_ios27_backup(
+def verify_ios26_backup(
     backup_dir: str | Path,
     expected_payloads: list[tuple[str, str, bytes, int, int, int]] | None = None,
 ) -> list[str]:
     """
-    6-point Pre-Restore Verification Gate for iOS 27 backups:
+    6-point Pre-Restore Verification Gate for iOS 26.x backups:
       1. `Manifest.db` is a valid SQLite3 database.
       2. `Manifest.plist` is readable and `IsEncrypted` is False.
       3. `Status.plist` is readable and `SnapshotState == "finished"`.
@@ -817,7 +931,7 @@ def verify_ios27_backup(
          `Manifest.db` row (`domain`, `relativePath`, `flags=1`), and its SHA-1
          `Digest` matches the on-disk bytes.
       6. Every regular file and directory row in `Manifest.db` has a positive,
-         non-duplicate `InodeNumber` (required by iOS 27 `BackupAgent2`).
+         non-duplicate `InodeNumber` (required by modern `BackupAgent2`).
 
     Returns a list of problem descriptions (empty list = 100% verified).
     """
@@ -835,7 +949,7 @@ def verify_ios27_backup(
             mp = plistlib.loads(manifest_plist_path.read_bytes())
             if mp.get("IsEncrypted"):
                 problems.append(
-                    "Backup is encrypted (IsEncrypted=True); iOS 27 plaintext injection requires an unencrypted backup"
+                    "Backup is encrypted (IsEncrypted=True); plaintext injection requires an unencrypted backup"
                 )
         except Exception as exc:
             problems.append(f"Manifest.plist is unreadable: {exc}")
@@ -950,27 +1064,27 @@ def verify_ios27_backup(
     return problems
 
 
-def patch_ios27_existing_backup(
+def patch_ios26_existing_backup(
     backup_dir: str | Path,
     *,
     udid: str | None = None,
     serial_number: str | None = None,
-    build_version: str = "24A335",
-    product_version: str = "27.0",
+    build_version: str = "23A345",
+    product_version: str = "26.0",
     is_supervised: bool = False,
     organization_name: str = "",
     block_ota: bool = False,
-) -> IOS27PatchReport:
+) -> IOS26PatchReport:
     """
-    Apply the iOS 27 G1 MDM-bypass & Setup Assistant patch to an existing
+    Apply the iOS 26.x G1 MDM-bypass & Setup Assistant patch to an existing
     `Manifest.db` backup directory:
       1. Strips `MDM.plist`, `MDMEvents.plist`, and `ManagingProfile.plist`.
       2. Updates `Manifest.plist` and `Info.plist` atomically if `udid`/`serial_number`
          are provided.
-      3. Injects iOS 27 `CloudConfigurationDetails.plist`, `purplebuddy.plist`
-         (with all 80 iOS 27 `SKIP_SETUP_KEYS`), and `ConfigurationProfiles/*`
+      3. Injects `CloudConfigurationDetails.plist`, `purplebuddy.plist`
+         (with all 80 `SKIP_SETUP_KEYS`), and `ConfigurationProfiles/*`
          with Donor-Blob Cloning and unique monotonic inodes.
-      4. Runs the 6-point `verify_ios27_backup` gate.
+      4. Runs the 6-point `verify_ios26_backup` gate.
     """
     device_dir = Path(backup_dir)
     if udid and (device_dir / sanitize_udid(udid) / "Manifest.db").is_file():
@@ -1001,20 +1115,21 @@ def patch_ios27_existing_backup(
         except Exception:
             pass
 
-    payloads = build_ios27_mdm_payloads(
+    payloads = build_ios26_mdm_payloads(
         build_version=build_version,
+        product_version=product_version,
         is_supervised=is_supervised,
         organization_name=organization_name,
         block_ota=block_ota,
     )
-    injected, unchanged, dirs_added, failed = inject_files_into_ios27_backup(
+    injected, unchanged, dirs_added, failed = inject_files_into_ios26_backup(
         device_dir,
         payloads,
         merge_existing_plists=True,
     )
-    problems = verify_ios27_backup(device_dir, payloads)
+    problems = verify_ios26_backup(device_dir, payloads)
 
-    return IOS27PatchReport(
+    return IOS26PatchReport(
         backup_dir=device_dir,
         stripped_mdm_files=stripped,
         injected_files=injected,
@@ -1026,7 +1141,7 @@ def patch_ios27_existing_backup(
     )
 
 
-def ios27_direct_skip_setup(
+def ios26_direct_skip_setup(
     udid: str | None = None,
     *,
     supervised: bool = False,
@@ -1035,16 +1150,16 @@ def ios27_direct_skip_setup(
     on_output: Callable[[str], None] | None = None,
 ) -> bool:
     """
-    Vector A (iOS 27 Direct `MobileConfigService` + `lockdownd` Push):
+    Vector A (iOS 26.x Direct `MobileConfigService` + `lockdownd` Push):
     Connects over USB Lockdown directly to `com.apple.mobile.MCInstall` and sends
-    `SetCloudConfiguration` with all 80 iOS 27 `SKIP_SETUP_KEYS`,
+    `SetCloudConfiguration` with all 80 `SKIP_SETUP_KEYS`,
     `CloudConfigurationUIComplete = True`, `ConfigurationWasApplied = True`,
     `IsSupervised = False`, and `PostSetupProfileWasInstalled = True`.
 
     Also sets persistent `lockdownd` completion flags (`com.apple.purplebuddy`,
     `com.apple.mobile.iTunes`, `com.apple.mobile.data_sync`).
 
-    Does NOT perform a partial backup restore — completely immune to the iOS 27
+    Does NOT perform a partial backup restore — completely immune to the
     partial-restore "safe state recovery" factory-reset loop.
     """
     def _emit(msg: str) -> None:
@@ -1084,7 +1199,7 @@ def ios27_direct_skip_setup(
                 if hasattr(mcs_ctx, "__aenter__"):
                     async with mcs_ctx as mcs:
                         existing = await mcs.get_cloud_configuration() or {}
-                        cfg = build_ios27_cloud_config(
+                        cfg = build_ios26_cloud_config(
                             existing,
                             supervised=supervised,
                             organization_name=organization_name,
@@ -1095,7 +1210,7 @@ def ios27_direct_skip_setup(
                         existing = mcs.get_cloud_configuration() or {}
                         if asyncio.iscoroutine(existing):
                             existing = await existing
-                        cfg = build_ios27_cloud_config(
+                        cfg = build_ios26_cloud_config(
                             existing or {},
                             supervised=supervised,
                             organization_name=organization_name,
@@ -1117,7 +1232,7 @@ def ios27_direct_skip_setup(
         applied_any = asyncio.run(_async_apply())
         if applied_any:
             _emit(
-                "[+] Pushed iOS 27 CloudConfiguration (80 SkipSetup panes, IsSupervised=False) via MobileConfigService."
+                "[+] Pushed CloudConfiguration (80 SkipSetup panes, IsSupervised=False) via MobileConfigService."
             )
             return True
     except ImportError:
@@ -1130,7 +1245,7 @@ def ios27_direct_skip_setup(
     # 2. Fallback: set lockdownd completion keys via `ideviceinfo` / `idevicediagnostics` if available
     if set_lockdown_flags and shutil.which("idevicepair"):
         _emit(
-            "[*] Note: Install `pymobiledevice3` (`pip install pymobiledevice3`) to enable direct MobileConfigService CloudConfiguration injection on iOS 27."
+            "[*] Note: Install `pymobiledevice3` (`pip install pymobiledevice3`) to enable direct MobileConfigService CloudConfiguration injection."
         )
 
     return applied_any

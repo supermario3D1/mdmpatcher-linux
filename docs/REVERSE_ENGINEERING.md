@@ -1,6 +1,12 @@
-# Reverse Engineering Analysis: MDMPatcher-Universal, MDMPatcher-Enhanced & iOS 27 Architecture
+# Reverse Engineering Analysis: MDMPatcher-Universal, MDMPatcher-Enhanced & Modern iOS Architecture (verified iOS 9 – 26.x)
 
-This document details the complete reverse engineering of [`tazMeah/MDMPatcher-Universal`](https://github.com/tazMeah/MDMPatcher-Universal) and [`fled-dev/MDMPatcher-Enhanced`](https://github.com/fled-dev/MDMPatcher-Enhanced), the root causes of why the original macOS tools fail on modern iOS versions (iOS 15 through iOS 26 and iOS 27+), and how **MDMPatcher-Linux v2.7.0** resolves them reliably across Linux distributions (Fedora, Ubuntu/Debian, Arch, openSUSE).
+This document details the complete reverse engineering of [`tazMeah/MDMPatcher-Universal`](https://github.com/tazMeah/MDMPatcher-Universal) and [`fled-dev/MDMPatcher-Enhanced`](https://github.com/fled-dev/MDMPatcher-Enhanced), the root causes of why the original macOS tools fail on modern iOS versions (iOS 15 through iOS 26.x), and how **MDMPatcher-Linux v2.8.0** resolves them reliably across Linux distributions (Fedora, Ubuntu/Debian, Arch, openSUSE).
+
+> **Verified support window: iOS 9.0 – iOS 26.x (builds `23A+`).** Everything below iOS 27 is covered.
+> iOS 27.0+ (builds `24A+`) is **experimental**: the same engine runs, but the CLI prints an
+> `UNVERIFIED FIRMWARE` warning (`warn_if_unsupported_ios()` in `mdmpatcher/ios26.py`) before any
+> device is touched, because the `BackupAgent2` and `MobileConfigService` changes described in
+> §4.2 have not been validated against released firmware.
 
 ---
 
@@ -98,33 +104,35 @@ Our analysis identified **five architectural flaws** in `MDMPatcher-Universal` a
 
 ---
 
-## 4. What Apple Changed in iOS 26.2+ & iOS 27 (Builds `24A+`)
+## 4. What Apple Changed in iOS 26.2+ (and in the iOS 27 betas, Builds `24A+`)
 
-In iOS 26.2+ and iOS 27.0+ (`24A335` and newer), Apple introduced three additional security hardening layers that broke legacy SparseRestore and BookRestore tools:
+In iOS 26.2+ — and continuing in the iOS 27.0 betas (`24A335` and newer) — Apple introduced three additional security hardening layers that broke legacy SparseRestore and BookRestore tools:
 
 ### 4.1 Partial-Restore Safe-State Recovery & `BackupAgent2` Validation
-In iOS 27, Apple patched the partial-restore vectors (`SparseRestore` and `bookassetd` `BookRestore`). When `BackupAgent2` receives a synthetic partial `Manifest.db`:
+Apple patched the partial-restore vectors (`SparseRestore` and `bookassetd` `BookRestore`). When `BackupAgent2` receives a synthetic partial `Manifest.db`:
 - If regular file (`flags=1`) or directory (`flags=2`) rows lack a strictly unique, positive `InodeNumber`, `BackupAgent2`'s inode-deduplication pass either overwrites the file with a donor's content or skips the row outright.
 - If a regular file's `MBFile` keyed archive lacks `ExtendedAttributes` (`com.apple.dataprotection.policy.exception-applied-by = b"com.apple.springboard"`), `BackupAgent2` rejects the row.
 - If any ancestor directory in `relativePath` lacks an explicit `flags=2` directory row in `Manifest.db`, the child file is silently ignored.
-- Worse, pushing an unverified synthetic partial backup to an already-booted iOS 27 device triggers **"safe state recovery"**, which wipes `HomeDomain` or forces a factory reset loop.
+- Worse, pushing an unverified synthetic partial backup to an already-booted device triggers **"safe state recovery"**, which wipes `HomeDomain` or forces a factory reset loop. (This is why iOS 27+ runs are labelled experimental rather than supported.)
 
-### 4.2 WWDC26 Device Management Backup Restoration Policy
-Per Apple's official **WWDC26 Device Management Updates**:
+### 4.2 Device Management Backup Restoration Policy (unverified on iOS 27+)
+Per Apple's official **Device Management Updates**:
 > *"On devices with iOS 27, iPadOS 27, and visionOS 27, devices no longer restore device management information from backup. This includes the enrollment profile, management configuration, and supervision status."*
 
-### 4.3 New iOS 26 & iOS 27 Setup Assistant (`purplebuddy`) Panes
-Apple added new Setup Assistant panes in iOS 26 and iOS 27 (`OSShowcase`, `SafetyAndHandling`, `AgeBasedSafetySettings`, `EnableLockdownMode`, `AdditionalPrivacySettings`, `WebContentFiltering`, `CameraButton`, `Intelligence`, `Tips`, `Welcome`, `RestoreCompleted`, `UpdateCompleted`, etc.).
+### 4.3 New iOS 26 Setup Assistant (`purplebuddy`) Panes
+Apple added new Setup Assistant panes in iOS 26 (`OSShowcase`, `SafetyAndHandling`, `AgeBasedSafetySettings`, `EnableLockdownMode`, `AdditionalPrivacySettings`, `WebContentFiltering`, `CameraButton`, `Intelligence`, `Tips`, `Welcome`, `RestoreCompleted`, `UpdateCompleted`, etc.).
 
 ---
 
-## 5. How `MDMPatcher-Linux v2.7.0` Reliably Works on iOS 27 (`mdmpatcher/ios27.py`)
+## 5. How `MDMPatcher-Linux v2.8.0` Works (`mdmpatcher/ios26.py`, verified on iOS 9 – 26.x)
 
-To make iOS 27 support reliable and immune to partial-restore factory-reset loops, **MDMPatcher-Linux** implements a **Dual-Vector iOS 27 Engine**:
+To make the bypass reliable on iOS 9 – 26.x and immune to partial-restore factory-reset loops,
+**MDMPatcher-Linux** implements a **Dual-Vector Engine** (the same vectors run on experimental
+iOS 27+ firmware, behind the unverified-firmware warning):
 
-### 5.1 Vector A: Direct USB `MobileConfigService` (`com.apple.mobile.MCInstall`) + `lockdownd` Push (`ios27_direct_skip_setup`)
+### 5.1 Vector A: Direct USB `MobileConfigService` (`com.apple.mobile.MCInstall`) + `lockdownd` Push (`ios26_direct_skip_setup`)
 - Connects over USB Lockdown directly to `com.apple.mobile.MCInstall` (`MobileConfigService`) and executes `GetCloudConfiguration` followed by `SetCloudConfiguration` with:
-  - `SkipSetup`: All **80 canonical iOS 27 setup pane identifiers** (`SKIP_SETUP_KEYS`), including `OSShowcase`, `SafetyAndHandling`, `AgeBasedSafetySettings`, `EnableLockdownMode`, `AdditionalPrivacySettings`, `WebContentFiltering`, `CameraButton`, `Intelligence`, etc.
+  - `SkipSetup`: All **80 canonical setup pane identifiers** (`SKIP_SETUP_KEYS`), including `OSShowcase`, `SafetyAndHandling`, `AgeBasedSafetySettings`, `EnableLockdownMode`, `AdditionalPrivacySettings`, `WebContentFiltering`, `CameraButton`, `Intelligence`, etc.
   - `AllowPairing = True`
   - `ConfigurationWasApplied = True`
   - `CloudConfigurationUIComplete = True`
@@ -132,19 +140,19 @@ To make iOS 27 support reliable and immune to partial-restore factory-reset loop
   - `ConfigurationSource = 0`
   - `PostSetupProfileWasInstalled = True`
 - Simultaneously sets persistent `lockdownd` completion flags (`com.apple.purplebuddy`: `SetupState = "Finished"`, `buddyComplete = True`, `SkipSetup = True`; `com.apple.mobile.iTunes`: `SetupComplete = True`, `BuddySetupComplete = True`; `com.apple.mobile.data_sync`: `BuddyComplete = True`).
-- Because Vector A operates directly over `MCInstall` and `lockdownd`, it **never invokes a partial backup restore**, completely eliminating any risk of triggering iOS 27's partial-restore reset loop.
+- Because Vector A operates directly over `MCInstall` and `lockdownd`, it **never invokes a partial backup restore**, completely eliminating any risk of triggering the partial-restore reset loop.
 
-### 5.2 Vector B: iOS 27 G1 "Protective Full-Backup $\rightarrow$ MDM Purge & Donor-Cloned Injection $\rightarrow$ 6-Point Verification Gate $\rightarrow$ Controlled Restore" Pipeline
-When modifying or restoring a backup on iOS 27 (`--mode ios27`, `--full-backup-g1`, or `patch-backup`):
+### 5.2 Vector B: G1 "Protective Full-Backup $\rightarrow$ MDM Purge & Donor-Cloned Injection $\rightarrow$ 6-Point Verification Gate $\rightarrow$ Controlled Restore" Pipeline
+When modifying or restoring a backup with the hardened engine (`--mode ios26`, `--full-backup-g1`, or `patch-backup`):
 1. **MDM Profile Purge (`strip_mdm_from_backup`)**:
    Deletes `MDM.plist`, `MDMEvents.plist`, and `ManagingProfile.plist` from `SysSharedContainerDomain-systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles/` in both `Manifest.db` and the `<aa>/<fileID>` payload store.
-2. **Donor-Blob Cloning & Unique Monotonic Inodes (`inject_files_into_ios27_backup`)**:
+2. **Donor-Blob Cloning & Unique Monotonic Inodes (`inject_files_into_ios26_backup`)**:
    - Scans `MAX(InodeNumber)` across `Manifest.db`.
    - Clones a trusted regular-file donor `MBFile` blob from the same domain (or constructs an `MBFile` with `SPRINGBOARD_EXT_ATTR_BYTES`), deep-merges staged plist keys onto any existing backup plist, synthesizes all missing parent directory rows (`flags=2`), and stamps strictly unique monotonic `InodeNumber` values.
-3. **6-Point Pre-Restore Verification Gate (`verify_ios27_backup`)**:
+3. **6-Point Pre-Restore Verification Gate (`verify_ios26_backup`)**:
    Verifies SQLite integrity, unencrypted `Manifest.plist`, `Status.plist` (`SnapshotState == "finished"`), absence of `MDM.plist`/`MDMEvents.plist`, SHA-1 `Digest` and byte equality on disk, unique positive `InodeNumber` values, and complete parent directory chains before sending a single packet to the device.
 4. **Controlled `--no-reboot` Restore + 60s SSL Watchdog + Phase-5 `MCInstall` Sweep**:
-   Restores with `reboot=False` (`--no-reboot`), 60-second Lockdown SSL handshake timeout, `G1Watchdog` stall detection, and `_Mobilebackup2NoEscrow` fallback for post-wipe devices lacking `EscrowBag`, followed by Vector A (`ios27_direct_skip_setup`) and a controlled restart.
+   Restores with `reboot=False` (`--no-reboot`), 60-second Lockdown SSL handshake timeout, `G1Watchdog` stall detection, and `_Mobilebackup2NoEscrow` fallback for post-wipe devices lacking `EscrowBag`, followed by Vector A (`ios26_direct_skip_setup`) and a controlled restart.
 
-### 5.3 Companion On-Device Research Helper (`src/c/bad_query_ios27.c`)
-For security researchers studying on-device sandbox escapes on iOS 26.0 – 26.6.1 and iOS 27.0b1 – 27.0b4, `src/c/bad_query_ios27.c` provides a reference implementation of the `libsystem_containermanager.dylib` Class-13 (`MCMSharedSystemDataContainer` via `systemgroup.com.apple.mobilegestaltcache` path traversal) sandbox token generator and `fsgetpath` inode scanner targeting `/var/containers/Shared/SystemGroup/<UUID>/Library/ConfigurationProfiles/CloudConfigurationDetails.plist`.
+### 5.3 Companion On-Device Research Helper (`src/c/bad_query_ios26.c`)
+For security researchers studying on-device sandbox escapes on iOS 26.0 – 26.6.1 and iOS 27.0b1 – 27.0b4, `src/c/bad_query_ios26.c` provides a reference implementation of the `libsystem_containermanager.dylib` Class-13 (`MCMSharedSystemDataContainer` via `systemgroup.com.apple.mobilegestaltcache` path traversal) sandbox token generator and `fsgetpath` inode scanner targeting `/var/containers/Shared/SystemGroup/<UUID>/Library/ConfigurationProfiles/CloudConfigurationDetails.plist`.

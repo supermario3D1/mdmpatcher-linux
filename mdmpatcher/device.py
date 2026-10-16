@@ -15,17 +15,22 @@ Why the original `MDMPatcher-Universal` C restore call failed on modern iOS:
       `cmd_flags |= CMD_FLAG_RESTORE_SETTINGS;`
     which sends `RestoreSystemFiles: false` in the `MobileBackup2` options plist.
   - Without `RestoreSystemFiles: true` (`--system`) and `RestoreDontCopyBackup: true`
-    (`--skip-apps`), iOS 15 - 27+ ignores `SysSharedContainerDomain-*` and
+    (`--skip-apps`), iOS 15 - 26.x ignores `SysSharedContainerDomain-*` and
     `ManagedPreferencesDomain`.
-  - On iOS 27 (builds 24A+), we additionally:
+  - On modern firmware (and on the experimental iOS 27+ / `24A+` path), we
+    additionally:
       1. Bump the Lockdown SSL handshake timeout to 60s.
       2. Support `--no-reboot` controlled restores so the device never reboots
          on a failed restore.
-      3. Support `_Mobilebackup2NoEscrow` when a freshly wiped iOS 27 device's
+      3. Support `_Mobilebackup2NoEscrow` when a freshly wiped device's
          pair record lacks `EscrowBag`.
       4. Push `SetCloudConfiguration` (80 `SkipSetup` panes) directly via
          `com.apple.mobile.MCInstall` (`MobileConfigService`) + `lockdownd`
          completion flags.
+
+Verified support window: iOS 9.0 - iOS 26.x (builds `23A+`). Devices reporting
+iOS 27.0+ still run, but `warn_if_unsupported_ios()` prints an experimental
+warning before any backup/restore traffic.
 """
 
 from __future__ import annotations
@@ -36,11 +41,11 @@ import shutil
 import subprocess
 from typing import Any, Callable
 
-from .ios27 import (
+from .ios26 import (
     G1Watchdog,
-    ios27_direct_skip_setup,
-    is_ios27_or_newer,
-    patch_ios27_existing_backup,
+    ios26_direct_skip_setup,
+    is_above_supported_ios,
+    patch_ios26_existing_backup,
 )
 from .patcher import DeviceIdentity
 
@@ -215,7 +220,7 @@ def create_device_backup(
 ) -> str:
     """
     Create a real unencrypted device backup into `backup_root/<udid>` over USB
-    (used by the iOS 27 G1 Full-Backup -> Donor-Cloned Injection -> Restore route).
+    (used by the G1 Full-Backup -> Donor-Cloned Injection -> Restore route).
     """
     def _emit(msg: str) -> None:
         if on_output:
@@ -290,18 +295,19 @@ def restore_backup(
     reboot: bool = True,
     remove_items: bool = False,
     skip_apps: bool = True,
-    ios27_mode: bool = False,
+    ios26_mode: bool = False,
     on_output: Callable[[str], None] | None = None,
 ) -> int:
     """
     Restore the generated backup at `backup_root/<source_udid>` onto the
     connected iOS device with `udid`.
 
-    When `ios27_mode=True`:
+    When `ios26_mode=True` (the hardened engine used for the iOS 26 generation
+    and for experimental iOS 27.0+ devices):
       1. Runs the restore with `--no-reboot` first (`reboot=False`) under a
          stall watchdog so the device never reboots on an incomplete restore.
       2. Pushes `SetCloudConfiguration` (80 `SkipSetup` panes) + `lockdownd`
-         completion flags via `ios27_direct_skip_setup`.
+         completion flags via `ios26_direct_skip_setup`.
       3. Triggers a controlled restart if `reboot=True`.
     """
     def _emit(msg: str) -> None:
@@ -310,7 +316,7 @@ def restore_backup(
         else:
             print(msg)
 
-    effective_reboot = False if ios27_mode else reboot
+    effective_reboot = False if ios26_mode else reboot
     watchdog = G1Watchdog()
 
     if shutil.which("idevicebackup2") is not None:
@@ -346,11 +352,11 @@ def restore_backup(
             watchdog.note_progress()
             _emit(line.rstrip())
         rc = proc.wait()
-        if rc == 0 and ios27_mode:
+        if rc == 0 and ios26_mode:
             _emit(
-                "[*] Running iOS 27 Phase-5 MobileConfigService + lockdownd sweep..."
+                "[*] Running Phase-5 MobileConfigService + lockdownd sweep..."
             )
-            ios27_direct_skip_setup(udid, on_output=_emit)
+            ios26_direct_skip_setup(udid, on_output=_emit)
             if reboot:
                 restart_device(udid, on_output=_emit)
         return rc
@@ -390,7 +396,7 @@ def restore_backup(
                 return Mobilebackup2Service(lc)
 
             _emit(
-                f"[*] Restoring backup via pymobiledevice3 (source={source_udid}, system={system_files}, skip_apps={skip_apps}, ios27_mode={ios27_mode})..."
+                f"[*] Restoring backup via pymobiledevice3 (source={source_udid}, system={system_files}, skip_apps={skip_apps}, ios26_mode={ios26_mode})..."
             )
 
             async def _async_restore() -> None:
@@ -426,11 +432,11 @@ def restore_backup(
                             await res
 
             asyncio.run(_async_restore())
-            if ios27_mode:
+            if ios26_mode:
                 _emit(
-                    "[*] Running iOS 27 Phase-5 MobileConfigService + lockdownd sweep..."
+                    "[*] Running Phase-5 MobileConfigService + lockdownd sweep..."
                 )
-                ios27_direct_skip_setup(udid, on_output=_emit)
+                ios26_direct_skip_setup(udid, on_output=_emit)
                 if reboot:
                     restart_device(udid, on_output=_emit)
             return 0
@@ -443,12 +449,12 @@ def restore_backup(
     )
 
 
-def run_ios27_g1_full_backup_patch(
+def run_ios26_g1_full_backup_patch(
     udid: str,
     *,
     backup_work_dir: str,
-    build_version: str = "24A335",
-    product_version: str = "27.0",
+    build_version: str = "23A345",
+    product_version: str = "26.0",
     serial_number: str = "",
     is_supervised: bool = False,
     organization_name: str = "",
@@ -457,12 +463,12 @@ def run_ios27_g1_full_backup_patch(
     on_output: Callable[[str], None] | None = None,
 ) -> int:
     """
-    Execute the full iOS 27 G1 Pipeline on a connected device:
+    Execute the full iOS 26.x G1 Pipeline on a connected device:
       Phase 1: Take a real unencrypted backup of the connected device (`create_device_backup`).
-      Phase 2: Strip `MDM.plist` & `MDMEvents.plist` and inject donor-cloned iOS 27
+      Phase 2: Strip `MDM.plist` & `MDMEvents.plist` and inject donor-cloned iOS 26.x
                MDM-bypass & Setup Assistant payloads with unique monotonic inodes.
-      Phase 3: Run the 6-point pre-restore verification gate (`verify_ios27_backup`).
-      Phase 4: Restore the verified backup with `--no-reboot` (`ios27_mode=True`).
+      Phase 3: Run the 6-point pre-restore verification gate (`verify_ios26_backup`).
+      Phase 4: Restore the verified backup with `--no-reboot` (`ios26_mode=True`).
       Phase 5: Push `SetCloudConfiguration` via `MobileConfigService` and restart.
     """
     def _emit(msg: str) -> None:
@@ -472,14 +478,14 @@ def run_ios27_g1_full_backup_patch(
             print(msg)
 
     _emit(
-        "[*] iOS 27 G1 Pipeline Phase 1/5: Taking protective device backup..."
+        "[*] G1 Pipeline Phase 1/5: Taking protective device backup..."
     )
     create_device_backup(backup_work_dir, udid, full=True, on_output=_emit)
 
     _emit(
-        "[*] iOS 27 G1 Pipeline Phase 2/5: Stripping MDM profiles & injecting donor-cloned payloads..."
+        "[*] G1 Pipeline Phase 2/5: Stripping MDM profiles & injecting donor-cloned payloads..."
     )
-    report = patch_ios27_existing_backup(
+    report = patch_ios26_existing_backup(
         backup_work_dir,
         udid=udid,
         serial_number=serial_number or None,
@@ -496,7 +502,7 @@ def run_ios27_g1_full_backup_patch(
     )
 
     _emit(
-        "[*] iOS 27 G1 Pipeline Phase 3/5: Running 6-point pre-restore verification gate..."
+        "[*] G1 Pipeline Phase 3/5: Running 6-point pre-restore verification gate..."
     )
     if not report.verified:
         _emit(
@@ -508,7 +514,7 @@ def run_ios27_g1_full_backup_patch(
     _emit("[+] Pre-restore verification gate passed (0 problems).")
 
     _emit(
-        "[*] iOS 27 G1 Pipeline Phase 4/5: Restoring verified backup with controlled reboot guard..."
+        "[*] G1 Pipeline Phase 4/5: Restoring verified backup with controlled reboot guard..."
     )
     return restore_backup(
         backup_work_dir,
@@ -518,6 +524,6 @@ def run_ios27_g1_full_backup_patch(
         settings=True,
         reboot=reboot,
         skip_apps=True,
-        ios27_mode=True,
+        ios26_mode=True,
         on_output=_emit,
     )

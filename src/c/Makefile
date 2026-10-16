@@ -6,7 +6,7 @@ DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags libimobiledevice-1.0 libimobiledev
 DEPS_LIBS := $(shell $(PKG_CONFIG) --libs libimobiledevice-1.0 libimobiledevice-glue-1.0 libplist-2.0 openssl libzip 2>/dev/null) -lreadline -lm
 
 TARGET = mdm_patch
-SRCS = main.c patch_logic.c idevicebackup2.c libidevicefunctions.c utils.c bad_query_ios27.c
+SRCS = main.c patch_logic.c idevicebackup2.c libidevicefunctions.c utils.c bad_query_ios26.c
 
 .PHONY: all clean
 

@@ -1,17 +1,19 @@
 /*
- * bad_query_ios27.c
+ * bad_query_ios26.c
  *
  * Reference on-device C helper for iOS 26.0 - 27.0b4 (`containermanagerd`
  * Class-13 path traversal + `fsgetpath` inode container resolver, adapted
  * from forcequitOS/bad_query for locating and minting a sandbox token to
  * `systemgroup.com.apple.configurationprofiles` / `CloudConfigurationDetails.plist`).
  *
- * Note: This file is compiled only when targeting Darwin/arm64e (iOS SDK);
- * on Linux hosts, USB Lockdown (`MCInstall`) and the iOS 27 G1 `Manifest.db`
- * pipeline in `mdmpatcher/ios27.py` and `src/c/patch_logic.c` are used.
+ * Support note: MDMPatcher-Linux is verified on iOS 9.0 - 26.x (builds 23A+).
+ * iOS 27.0+ is experimental. This file is compiled only when targeting
+ * Darwin/arm64e (iOS SDK); on Linux hosts, USB Lockdown (`MCInstall`) and the
+ * G1 `Manifest.db` pipeline in `mdmpatcher/ios26.py` and `src/c/patch_logic.c`
+ * are used.
  */
 
-#include "bad_query_ios27.h"
+#include "bad_query_ios26.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include <stdio.h>
@@ -36,7 +38,7 @@ typedef char *(*container_copy_sandbox_token_fn)(void *);
 typedef int64_t (*sandbox_extension_consume_fn)(const char *);
 typedef int (*sandbox_extension_release_fn)(int64_t);
 
-int64_t ios27_acquire_systemgroup_sandbox_token(const char *absolute_path, bool create_if_missing) {
+int64_t ios26_acquire_systemgroup_sandbox_token(const char *absolute_path, bool create_if_missing) {
     if (!absolute_path || absolute_path[0] != '/') return -255;
     if (!create_if_missing) {
         struct stat st;
@@ -113,14 +115,14 @@ int64_t ios27_acquire_systemgroup_sandbox_token(const char *absolute_path, bool 
     return handle;
 }
 
-void ios27_release_sandbox_token(int64_t handle) {
+void ios26_release_sandbox_token(int64_t handle) {
     if (handle < 0) return;
     sandbox_extension_release_fn release_extension =
         (sandbox_extension_release_fn)dlsym(RTLD_DEFAULT, "sandbox_extension_release");
     if (release_extension) release_extension(handle);
 }
 
-char *ios27_find_configurationprofiles_container(int64_t max_inode) {
+char *ios26_find_configurationprofiles_container(int64_t max_inode) {
     const char *base_path = "/var/containers/Shared/SystemGroup";
     struct statfs sfs;
     if (statfs(base_path, &sfs) != 0) return NULL;
@@ -141,17 +143,17 @@ char *ios27_find_configurationprofiles_container(int64_t max_inode) {
     return NULL;
 }
 #else
-int64_t ios27_acquire_systemgroup_sandbox_token(const char *absolute_path, bool create_if_missing) {
+int64_t ios26_acquire_systemgroup_sandbox_token(const char *absolute_path, bool create_if_missing) {
     (void)absolute_path;
     (void)create_if_missing;
     return -1;
 }
 
-void ios27_release_sandbox_token(int64_t handle) {
+void ios26_release_sandbox_token(int64_t handle) {
     (void)handle;
 }
 
-char *ios27_find_configurationprofiles_container(int64_t max_inode) {
+char *ios26_find_configurationprofiles_container(int64_t max_inode) {
     (void)max_inode;
     return 0;
 }

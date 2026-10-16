@@ -1,17 +1,24 @@
 """
-Command-line interface and optional Linux GUI for MDMPatcher-Linux (iOS 9 - iOS 27+).
+Command-line interface and optional Linux GUI for MDMPatcher-Linux.
+
+Verified support window: iOS / iPadOS 9.0 - 26.x (builds 23A+), which covers
+every shipping iPhone and iPad today. iOS 27.0+ (builds 24A+) is treated as
+experimental: it still runs, but an unverified-firmware warning is printed
+before any device is touched (see `mdmpatcher/ios26.py`).
 
 Subcommands:
-  - `info`:         Detect connected iPhone/iPad over USB and display device info.
+  - `info`:         Detect connected iPhone/iPad over USB and display device info,
+                    including whether the firmware is inside the verified window.
   - `patch`:        Detect connected iPhone/iPad, build MDM-patched backup, and restore.
-                    Automatically enables the iOS 27 Multi-Vector Engine on iOS 27+ (builds 24A+).
+                    Uses the hardened `ios26` engine when a device reports firmware above
+                    the verified maximum (iOS 27.0+ / builds 24A+).
   - `skip-setup`:   Direct USB `MobileConfigService` (`com.apple.mobile.MCInstall`) +
                     `lockdownd` Setup Assistant & CloudConfiguration bypass (no backup restore;
-                    zero partial-restore factory-reset risk on iOS 27).
-  - `patch-backup`: Apply the iOS 27 G1 MDM-strip + Donor-Cloned `Manifest.db` injection +
+                    zero partial-restore factory-reset risk).
+  - `patch-backup`: Apply the G1 MDM-strip + Donor-Cloned `Manifest.db` injection +
                     6-point verification gate to an existing device backup directory.
   - `build-backup`: Generate an MDM-patched backup directory offline (supports `enhanced`,
-                    `ios27`, `modern`, `sqlite`, and `legacy` modes).
+                    `ios26`, `modern`, `sqlite`, and `legacy` modes).
   - `deobfuscate`:  Decrypt and unswap `extension1.pdf`, `extension2.pdf`, and
                     `libiMobileeDevice.dylib` into `clean_info.plist`,
                     `clean_manifest.plist`, and `clean_archive.zip`.
@@ -38,13 +45,18 @@ from .device import (
     check_find_my_enabled,
     detect_connected_device,
     restore_backup,
-    run_ios27_g1_full_backup_patch,
+    run_ios26_g1_full_backup_patch,
 )
-from .ios27 import (
-    ios27_direct_skip_setup,
-    is_ios27_or_newer,
-    patch_ios27_existing_backup,
+
+from .ios26 import (
+    SUPPORTED_IOS_RANGE,
+    ios26_direct_skip_setup,
+    ios_support_state,
+    is_above_supported_ios,
+    patch_ios26_existing_backup,
+    warn_if_unsupported_ios,
 )
+
 from .manifest_db import read_manifest_db
 from .mbdb import Mbdb
 from .patcher import (
@@ -56,6 +68,14 @@ from .patcher import (
 )
 
 
+# Human-readable labels for `ios_support_state()` results.
+SUPPORT_LABELS: dict[str, str] = {
+    "verified": "Verified firmware",
+    "unverified": "UNVERIFIED / EXPERIMENTAL (above iOS 26.x)",
+    "below": "Below the iOS 9 minimum (best-effort)",
+}
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     try:
         dev = detect_connected_device(args.udid)
@@ -64,7 +84,13 @@ def cmd_info(args: argparse.Namespace) -> int:
         return 1
 
     fmi = check_find_my_enabled(dev.udid)
-    ios27_flag = is_ios27_or_newer(dev.product_version, dev.build_version)
+    state = ios_support_state(dev.product_version, dev.build_version)
+    if is_above_supported_ios(dev.product_version, dev.build_version):
+        engine = "ios26 (G1 + MCInstall Hybrid) — experimental on iOS 27+"
+    elif state == "below":
+        engine = "legacy (best-effort below iOS 9)"
+    else:
+        engine = "enhanced + MCInstall (verified)"
     print("=== Connected iOS Device ===")
     print(f"  Device Name   : {dev.device_name}")
     print(f"  Product Type  : {dev.product_type}")
@@ -72,9 +98,11 @@ def cmd_info(args: argparse.Namespace) -> int:
     print(f"  Serial Number : {dev.serial_number}")
     print(f"  UDID          : {dev.udid}")
     print(f"  IMEI          : {dev.imei or '(none / Wi-Fi only)'}")
+    print(f"  Engine        : {engine}")
     print(
-        f"  iOS 27 Engine : {'Active (G1 + MCInstall Hybrid)' if ios27_flag else 'Compatible (Enhanced + MCInstall)'}"
+        f"  Support       : {SUPPORT_LABELS[state]} (verified: {SUPPORTED_IOS_RANGE})"
     )
+    warn_if_unsupported_ios(dev.product_version, dev.build_version)
     if fmi is not None:
         print(
             f"  Find My iPhone: {'ENABLED (Must be disabled before restore!)' if fmi else 'Disabled (Ready)'}"
@@ -116,6 +144,11 @@ def cmd_build_backup(args: argparse.Namespace) -> int:
             device_name=args.device_name or "iPhone",
         )
 
+    warn_if_unsupported_ios(
+        device.product_version,
+        device.build_version,
+    )
+
     cfg = PatchConfig(
         mode=args.mode,
         block_ota=args.block_ota,
@@ -152,7 +185,12 @@ def cmd_skip_setup(args: argparse.Namespace) -> int:
     print(
         "====================================================================="
     )
-    ok = ios27_direct_skip_setup(
+    try:
+        dev = detect_connected_device(args.udid)
+        warn_if_unsupported_ios(dev.product_version, dev.build_version)
+    except DeviceCommunicationError:
+        pass
+    ok = ios26_direct_skip_setup(
         args.udid,
         supervised=args.supervised,
         organization_name=args.org_name or "",
@@ -160,7 +198,7 @@ def cmd_skip_setup(args: argparse.Namespace) -> int:
     )
     if ok:
         print(
-            "\n[+] Successfully applied iOS 27 CloudConfiguration (80 SkipSetup panes) and lockdownd completion flags!"
+            "\n[+] Successfully applied CloudConfiguration (80 SkipSetup panes) and lockdownd completion flags!"
         )
         return 0
     print(
@@ -180,17 +218,19 @@ def cmd_patch_backup(args: argparse.Namespace) -> int:
         )
         return 1
 
-    report = patch_ios27_existing_backup(
+    warn_if_unsupported_ios(args.ios_version, args.build_version)
+
+    report = patch_ios26_existing_backup(
         target,
         udid=args.udid,
         serial_number=args.serial,
-        build_version=args.build_version or "24A335",
-        product_version=args.ios_version or "27.0",
+        build_version=args.build_version or "23A345",
+        product_version=args.ios_version or "26.0",
         is_supervised=args.supervised,
         organization_name=args.org_name or "",
         block_ota=args.block_ota,
     )
-    print(f"[+] Patched iOS 27 backup directory: {report.backup_dir}")
+    print(f"[+] Patched iOS 26.x backup directory: {report.backup_dir}")
     print(f"    Stripped MDM files    : {len(report.stripped_mdm_files)}")
     for item in report.stripped_mdm_files:
         print(f"      - {item}")
@@ -210,7 +250,7 @@ def cmd_patch_backup(args: argparse.Namespace) -> int:
 def cmd_patch(args: argparse.Namespace) -> int:
     print("=================================================================")
     print(
-        f"  MDMPatcher-Linux v{__version__} (iOS 9 - iOS 27+ Universal Edition)"
+        f"  MDMPatcher-Linux v{__version__} (iOS 9 - iOS 26.x Edition)"
     )
     print("=================================================================")
     print("[*] Searching for USB-connected iOS/iPadOS device...")
@@ -220,13 +260,16 @@ def cmd_patch(args: argparse.Namespace) -> int:
         print(f"[!] {exc}", file=sys.stderr)
         return 1
 
-    is_27 = is_ios27_or_newer(device.product_version, device.build_version)
+    above_supported = warn_if_unsupported_ios(
+        device.product_version, device.build_version
+    )
     selected_mode: PatchMode = args.mode
-    if is_27 and selected_mode == "enhanced" and not args.keep_mode:
+    if above_supported and selected_mode == "enhanced" and not args.keep_mode:
         print(
-            "[*] Detected iOS 27+ firmware — automatically engaging iOS 27 Multi-Vector Engine (`ios27`)."
+            "[*] Firmware is above the verified iOS 26.x maximum — automatically "
+            "engaging the hardened `ios26` Multi-Vector Engine."
         )
-        selected_mode = "ios27"
+        selected_mode = "ios26"
 
     print("[+] Device detected:")
     print(f"    Name   : {device.device_name}")
@@ -236,6 +279,12 @@ def cmd_patch(args: argparse.Namespace) -> int:
     print(f"    UDID   : {device.udid}")
     print(f"    IMEI   : {device.imei or '(none)'}")
     print(f"    Mode   : {selected_mode}")
+    print(
+        f"    Support: {SUPPORT_LABELS[ios_support_state(device.product_version, device.build_version)]}"
+    )
+    print(
+        f"    Support: {SUPPORT_LABELS[ios_support_state(device.product_version, device.build_version)]}"
+    )
 
     fmi = check_find_my_enabled(device.udid)
     if fmi is True and not args.ignore_find_my:
@@ -263,7 +312,7 @@ def cmd_patch(args: argparse.Namespace) -> int:
         work_root.mkdir(parents=True, exist_ok=True)
 
         if getattr(args, "full_backup_g1", False):
-            rc = run_ios27_g1_full_backup_patch(
+            rc = run_ios26_g1_full_backup_patch(
                 device.udid,
                 backup_work_dir=str(work_root),
                 build_version=device.build_version,
@@ -282,11 +331,11 @@ def cmd_patch(args: argparse.Namespace) -> int:
                 print("[*] Dry-run requested; skipping USB restore.")
                 return 0
 
-            if is_27 or selected_mode == "ios27":
+            if above_supported or selected_mode == "ios26":
                 print(
-                    "[*] Applying iOS 27 Pre-Restore Direct CloudConfiguration & lockdownd flags..."
+                    "[*] Applying Pre-Restore Direct CloudConfiguration & lockdownd flags..."
                 )
-                ios27_direct_skip_setup(
+                ios26_direct_skip_setup(
                     device.udid,
                     supervised=cfg.is_supervised,
                     organization_name=cfg.organization_name,
@@ -303,15 +352,16 @@ def cmd_patch(args: argparse.Namespace) -> int:
                 settings=True,
                 reboot=not args.no_reboot,
                 skip_apps=True,
-                ios27_mode=(is_27 or selected_mode == "ios27"),
+                ios26_mode=(above_supported or selected_mode == "ios26"),
             )
 
         if rc == 0:
             print("\n[+] SUCCESS: MDM patch applied!")
             print("    The device will now reboot.")
             print(
-                "    NOTE for iOS 17.2 - iOS 27+: If the screen displays 'iPhone Partially Set Up',\n"
-                "    tap 'Continue with Partial Setup' (do NOT tap 'Finish Setting Up') to enter the Home Screen."
+                "    NOTE for iOS 17.2 - iOS 26.x (and experimental iOS 27+): If the screen\n"
+                "    displays 'iPhone Partially Set Up', tap 'Continue with Partial Setup'\n"
+                "    (do NOT tap 'Finish Setting Up') to enter the Home Screen."
             )
             return 0
 
@@ -320,7 +370,8 @@ def cmd_patch(args: argparse.Namespace) -> int:
             "    Troubleshooting:\n"
             "      - Ensure Find My iPhone is turned off.\n"
             "      - Ensure the device is on the Setup Assistant ('Hello') screen.\n"
-            "      - On iOS 27+, try `./mdmpatcher.py skip-setup` (Vector A) or `./mdmpatcher.py patch --full-backup-g1` (Vector B).",
+            "      - On iOS 27+ (experimental), try `./mdmpatcher.py skip-setup` (Vector A)\n"
+            "        or `./mdmpatcher.py patch --full-backup-g1` (Vector B).",
             file=sys.stderr,
         )
         return rc
@@ -406,20 +457,20 @@ def cmd_gui(_args: argparse.Namespace) -> int:
 
             root = tk.Tk()
             root.title(
-                f"MDMPatcher-Linux v{__version__} (iOS 9 - 27+ Universal)"
+                f"MDMPatcher-Linux v{__version__} (iOS 9 - iOS 26.x)"
             )
             root.geometry("720x520")
 
             header = ttk.Label(
                 root,
-                text="MDMPatcher-Linux (iOS 9 – 27+ Universal)",
+                text="MDMPatcher-Linux (iOS 9 – iOS 26.x)",
                 font=("Sans", 14, "bold"),
             )
             header.pack(pady=(12, 4))
 
             sub = ttk.Label(
                 root,
-                text="Reverse-Engineered Linux Port with iOS 27 G1 + MCInstall Support",
+                text="Reverse-Engineered Linux Port with iOS 26 G1 + MCInstall Support",
             )
             sub.pack(pady=(0, 10))
 
@@ -440,7 +491,7 @@ def cmd_gui(_args: argparse.Namespace) -> int:
             mode_combo = ttk.Combobox(
                 opts_frame,
                 textvariable=mode_var,
-                values=["enhanced", "ios27", "modern", "sqlite", "legacy"],
+                values=["enhanced", "ios26", "modern", "sqlite", "legacy"],
                 state="readonly",
                 width=18,
             )
@@ -464,9 +515,15 @@ def cmd_gui(_args: argparse.Namespace) -> int:
             def on_refresh() -> None:
                 try:
                     d = detect_connected_device()
-                    is27 = is_ios27_or_newer(d.product_version, d.build_version)
-                    if is27:
-                        mode_var.set("ios27")
+                    above_supported = is_above_supported_ios(
+                        d.product_version, d.build_version
+                    )
+                    if above_supported:
+                        mode_var.set("ios26")
+                        append_log(
+                            "[!] iOS 27+ detected — above the verified iOS 26.x "
+                            "maximum; continuing is experimental."
+                        )
                     dev_var.set(
                         f"{d.device_name} ({d.product_type}) — iOS {d.product_version} ({d.build_version})\n"
                         f"Serial: {d.serial_number}  |  UDID: {d.udid}"
@@ -493,9 +550,9 @@ def cmd_gui(_args: argparse.Namespace) -> int:
                     rc = restore_backup(
                         tmp,
                         d.udid,
-                        ios27_mode=(
-                            mode_var.get() == "ios27"
-                            or is_ios27_or_newer(
+                        ios26_mode=(
+                            mode_var.get() == "ios26"
+                            or is_above_supported_ios(
                                 d.product_version, d.build_version
                             )
                         ),
@@ -505,18 +562,19 @@ def cmd_gui(_args: argparse.Namespace) -> int:
                         append_log("[+] MDM Patch completed! Device is rebooting.")
                         messagebox.showinfo(
                             "Success",
-                            "MDM Patch applied!\n\nOn iOS 17.2 - 27+: If prompted with 'iPhone Partially Set Up', tap 'Continue with Partial Setup'.",
+                            "MDM Patch applied!\\n\\nOn iOS 17.2 - 26.x (and experimental iOS 27+):\\n"
+                            "If prompted with 'iPhone Partially Set Up', tap 'Continue with Partial Setup'.",
                         )
                     else:
                         append_log(f"[!] Restore failed with code {rc}")
 
             def on_direct_skip() -> None:
                 append_log("[*] Running Direct USB MCInstall + lockdownd SkipSetup...")
-                ok = ios27_direct_skip_setup(on_output=append_log)
+                ok = ios26_direct_skip_setup(on_output=append_log)
                 if ok:
                     messagebox.showinfo(
                         "Success",
-                        "Direct iOS 27 CloudConfiguration & Setup Assistant skip applied!",
+                        "Direct CloudConfiguration & Setup Assistant skip applied!",
                     )
 
             btn_frame = ttk.Frame(root)
@@ -526,7 +584,7 @@ def cmd_gui(_args: argparse.Namespace) -> int:
             ).pack(side="left", padx=6)
             ttk.Button(
                 btn_frame,
-                text="Direct Skip Setup (iOS 27 Safe)",
+                text="Direct Skip Setup (No-Restore)",
                 command=on_direct_skip,
             ).pack(side="left", padx=6)
             ttk.Button(
@@ -542,9 +600,9 @@ def cmd_gui(_args: argparse.Namespace) -> int:
     print(f"  MDMPatcher-Linux v{__version__} — Interactive Terminal Mode")
     print("=================================================================")
     print("  1) Detect connected iOS device (`info`)")
-    print("  2) Patch connected iOS device (`enhanced` / auto-`ios27` mode)")
-    print("  3) Direct USB Setup & CloudConfig Bypass (`skip-setup`, iOS 27 safe)")
-    print("  4) Patch connected iOS 27 device (`full-backup-g1` protective route)")
+    print("  2) Patch connected iOS device (`enhanced` / auto-`ios26` mode)")
+    print("  3) Direct USB Setup & CloudConfig Bypass (`skip-setup`, no restore)")
+    print("  4) Patch connected device via the G1 protective route (`full-backup-g1`)")
     print("  5) Deobfuscate MDMPatcher-Universal assets (`deobfuscate`)")
     print("  0) Exit")
     try:
@@ -591,7 +649,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="mdmpatcher",
         description=(
             "MDMPatcher-Linux: Port of MDMPatcher-Universal & MDMPatcher-Enhanced "
-            "for Linux (Fedora, Ubuntu, Debian, Arch) with iOS 9 - iOS 27+ support."
+            "for Linux (Fedora, Ubuntu, Debian, Arch). Verified on iOS 9 - iOS 26.x; "
+            "iOS 27.0+ is experimental and warns before every operation."
         ),
     )
     parser.add_argument(
@@ -614,14 +673,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_patch.add_argument(
         "-m",
         "--mode",
-        choices=["enhanced", "ios27", "modern", "sqlite", "legacy"],
+        choices=["enhanced", "ios26", "modern", "sqlite", "legacy"],
         default="enhanced",
-        help="Backup generation mode (default: enhanced; auto-switches to ios27 on iOS 27+)",
+        help="Backup generation mode (default: enhanced; auto-switches to ios26 "
+        "when firmware above the verified iOS 26.x maximum is detected)",
     )
     p_patch.add_argument(
         "--keep-mode",
         action="store_true",
-        help="Do not auto-switch from enhanced to ios27 mode when iOS 27+ is detected",
+        help="Do not auto-switch from enhanced to ios26 mode when firmware above "
+        "the verified iOS 26.x maximum is detected",
     )
     p_patch.add_argument(
         "--direct-only",
@@ -631,7 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_patch.add_argument(
         "--full-backup-g1",
         action="store_true",
-        help="Run Vector B (iOS 27 G1 5-phase full device backup -> MDM strip & donor-cloned injection -> verified restore)",
+        help="Run Vector B (G1 5-phase full device backup -> MDM strip & donor-cloned injection -> verified restore)",
     )
     p_patch.add_argument(
         "--block-ota",
@@ -676,7 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
     # skip-setup (Vector A)
     p_skip = sub.add_parser(
         "skip-setup",
-        help="Direct USB MobileConfigService + lockdownd Setup Assistant & CloudConfig bypass (iOS 27 safe, no restore)",
+        help="Direct USB MobileConfigService + lockdownd Setup Assistant & CloudConfig bypass (no restore)",
     )
     p_skip.add_argument("-u", "--udid", help="Target device UDID")
     p_skip.add_argument(
@@ -694,7 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
     # patch-backup (Vector B offline/existing backup modifier)
     p_pb = sub.add_parser(
         "patch-backup",
-        help="Strip MDM.plist/MDMEvents.plist and inject iOS 27 donor-cloned payloads into an existing Manifest.db backup",
+        help="Strip MDM.plist/MDMEvents.plist and inject donor-cloned payloads into an existing Manifest.db backup",
     )
     p_pb.add_argument(
         "backup_dir",
@@ -705,14 +766,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_pb.add_argument(
         "-b",
         "--build-version",
-        default="24A335",
-        help="Target BuildVersion (default: 24A335)",
+        default="23A345",
+        help="Target BuildVersion (default: 23A345 = iOS 26.0)",
     )
     p_pb.add_argument(
         "-i",
         "--ios-version",
-        default="27.0",
-        help="Target ProductVersion (default: 27.0)",
+        default="26.0",
+        help="Target ProductVersion (default: 26.0)",
     )
     p_pb.add_argument(
         "--block-ota",
@@ -741,7 +802,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_build.add_argument(
         "-m",
         "--mode",
-        choices=["enhanced", "ios27", "modern", "sqlite", "legacy"],
+        choices=["enhanced", "ios26", "modern", "sqlite", "legacy"],
         default="enhanced",
         help="Backup generation mode (default: enhanced)",
     )
@@ -756,10 +817,10 @@ def build_parser() -> argparse.ArgumentParser:
         "-t", "--product-type", help="Device ProductType (e.g. iPhone16,2)"
     )
     p_build.add_argument(
-        "-b", "--build-version", help="Device BuildVersion (e.g. 24A335)"
+        "-b", "--build-version", help="Device BuildVersion (e.g. 23A345)"
     )
     p_build.add_argument(
-        "-i", "--ios-version", help="Device ProductVersion (e.g. 27.0)"
+        "-i", "--ios-version", help="Device ProductVersion (e.g. 26.0)"
     )
     p_build.add_argument("--imei", help="Device IMEI (omit for Wi-Fi iPads)")
     p_build.add_argument(
